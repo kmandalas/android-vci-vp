@@ -1,0 +1,187 @@
+package com.example.eudiwemu.service
+
+import android.util.Log
+import com.authlete.sd.Disclosure
+import com.authlete.sd.SDJWT
+import com.example.eudiwemu.model.AuthorizationRequest
+import com.example.eudiwemu.security.AndroidKeystoreSigner
+import com.example.eudiwemu.security.WalletKeyManager
+import com.nimbusds.jose.JOSEException
+import com.nimbusds.jose.JOSEObjectType
+import com.nimbusds.jose.JWSAlgorithm
+import com.nimbusds.jose.JWSHeader
+import com.nimbusds.jose.jwk.JWK
+import com.nimbusds.jwt.JWTClaimsSet
+import com.nimbusds.jwt.SignedJWT
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import java.text.ParseException
+import java.util.UUID
+
+class VpTokenService(
+    private val client: HttpClient,
+    private val walletKeyManager: WalletKeyManager
+) {
+
+    companion object {
+        private const val KEY_ALIAS = "wallet-key"
+        private const val VERIFIER_URL = "http://192.168.1.65:9002/verifier/verify-vp" // todo
+    }
+
+    suspend fun getRequestObject(requestUri: String): AuthorizationRequest {
+        val response: String = client.get(requestUri).body()
+        return Json.decodeFromString(response)
+    }
+
+    suspend fun sendVpTokenToVerifier(vpToken: String, responseUri: String): String {
+        try {
+            val response: HttpResponse = client.post(responseUri) {
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("vp_token" to vpToken))
+            }
+
+            val responseBody: String = response.body()
+
+            Log.d("VP Verification Response", responseBody)
+            return responseBody
+        } catch (e: Exception) {
+            Log.e("VpTokenService", "Error sending VP Token to Verifier", e)
+            throw e
+        }
+    }
+
+    fun extractRequestedClaims(requestObject: AuthorizationRequest, storedCredential: String): List<Disclosure> {
+        try {
+            // Extract requested claim paths
+            val requestedClaimPaths = extractRequestedClaimPaths(requestObject)
+            println("Extracted Claim Paths: $requestedClaimPaths")
+
+            // Parse the stored SD-JWT to get disclosures
+            val allDisclosures = parseSDJWT(storedCredential)
+
+            // Filter disclosures based on requested claim paths
+            return allDisclosures.filter { disclosure ->
+                requestedClaimPaths.any { path -> path.contains(disclosure.claimName) }
+            }
+        } catch (e: Exception) {
+            throw RuntimeException("Error extracting requested disclosures: ${e.message}", e)
+        }
+    }
+
+    private fun extractRequestedClaimPaths(requestObject: AuthorizationRequest): List<String> {
+        return try {
+            requestObject.presentation_definition.input_descriptors
+                .flatMap { it.constraints.fields }
+                .mapNotNull { field ->
+                    field.path.firstOrNull()?.replace("$.","") // Extract first path element
+                }
+        } catch (e: Exception) {
+            throw RuntimeException("Error extracting claim paths: ${e.message}", e)
+        }
+    }
+
+    private fun parseSDJWT(storedCredential: String): List<Disclosure> {
+        try {
+            // Parse the SD-JWT to get the disclosures
+            val sdJwt = SDJWT.parse(storedCredential)
+
+            // Return the disclosures as a list
+            return sdJwt.disclosures
+        } catch (e: Exception) {
+            throw RuntimeException("Error parsing SD-JWT: ${e.message}", e)
+        }
+    }
+
+    // Function to create Verifiable Presentation (VP)
+    fun createVP(credential: String, disclosures: List<Disclosure> = listOf()): SDJWT {
+        // Parse the provided credential into an SDJWT
+        val vc = SDJWT.parse(credential)
+
+        // If no disclosures are provided, include only the first one
+        val disclosuresToUse = disclosures.ifEmpty { listOf(vc.disclosures[0]) }
+
+        // Intended audience of the verifiable presentation
+        val audience = listOf("https://verifier.example.com") // todo
+
+        // Create the binding JWT, part of the verifiable presentation
+        val bindingJwt = createBindingJwt(vc, disclosuresToUse, audience, walletKeyManager.getWalletKey())
+
+        // Create and return a Verifiable Presentation (VP) in SD-JWT format
+        return SDJWT(vc.credentialJwt, disclosuresToUse, bindingJwt.serialize())
+    }
+
+    // Function to create the binding JWT
+    @Throws(ParseException::class, JOSEException::class)
+    private fun createBindingJwt(vc: SDJWT, disclosures: List<Disclosure>, audience: List<String>, signingKey: JWK): SignedJWT {
+        // Create the header part of a binding JWT
+        val header = createBindingJwtHeader(signingKey)
+
+        // Create the payload part of a binding JWT
+        val payload = createBindingJwtPayload(vc, disclosures, audience)
+
+        // Create a binding JWT (not signed yet)
+        val jwt = SignedJWT(header, JWTClaimsSet.parse(payload))
+
+        // Create a signer
+        // val signer: JWSSigner = DefaultJWSSignerFactory().createJWSSigner(signingKey)
+        val signer = AndroidKeystoreSigner(KEY_ALIAS) // ✅ Uses Android Keystore API
+
+        // Let the signer sign the binding JWT
+        jwt.sign(signer)
+
+        // Return the signed binding JWT
+        return jwt
+    }
+
+    // Function to create the header for the binding JWT
+    private fun createBindingJwtHeader(signingKey: JWK): JWSHeader {
+        // The signing algorithm
+        val alg = JWSAlgorithm.parse(signingKey.algorithm.name)
+
+        // The key ID
+        val kid = signingKey.keyID
+
+        // Create the header for the binding JWT
+        return JWSHeader.Builder(alg)
+            .keyID(kid)
+            .type(JOSEObjectType("kb+jwt"))
+            .build()
+    }
+
+    // Function to create the payload for the binding JWT
+    private fun createBindingJwtPayload(vc: SDJWT, disclosures: List<Disclosure>, audience: List<String>): Map<String, Any> {
+        val payload = LinkedHashMap<String, Any>()
+
+        // "iat" - The issuance time of the binding JWT
+        payload["iat"] = System.currentTimeMillis() / 1000L
+
+        // "aud" - The intended receiver of the binding JWT
+        payload["aud"] = audience
+
+        // "nonce" - A random value ensuring the freshness of the signature
+        payload["nonce"] = UUID.randomUUID().toString()
+
+        // "sd_hash" - The base64url-encoded hash value over the Issuer-signed JWT and the selected disclosures
+        payload["sd_hash"] = computeSdHash(vc, disclosures)
+
+        return payload
+    }
+
+    // Function to compute the SD hash value
+    private fun computeSdHash(vc: SDJWT, disclosures: List<Disclosure>): String {
+        // Compute the SD hash value using the credential JWT and disclosures
+        return SDJWT(vc.credentialJwt, disclosures).sdHash
+    }
+
+}
