@@ -60,99 +60,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-//@Composable
-//fun WalletApp(context: Context,
-//              intent: Intent?,
-//              issuanceService: IssuanceService,
-//              vpTokenService: VpTokenService) {
-//    // MutableState for clientId and requestUri
-//    val clientId = remember { mutableStateOf("") }
-//    val requestUri = remember { mutableStateOf("") }
-//    var status by remember { mutableStateOf("Press the button to request VC") }
-//
-//    // Handle the deep link data if available
-//    LaunchedEffect(intent) {
-//        handleDeepLink(context, intent, clientId, requestUri, vpTokenService)
-//    }
-//
-//    Scaffold { paddingValues ->
-//        Box(
-//            modifier = Modifier
-//                .fillMaxSize()
-//                .padding(paddingValues),
-//            contentAlignment = Alignment.Center
-//        ) {
-//            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//                Text(text = status, modifier = Modifier.padding(16.dp))
-//                Spacer(modifier = Modifier.height(16.dp))
-//                Button(onClick = {
-//                    requestVC(context, issuanceService) { result ->
-//                        status = result
-//                    }
-//                }) {
-//                    Text("Request VC")
-//                }
-//
-//                // Display extracted deep link info
-//                if (clientId.value.isNotEmpty() && requestUri.value.isNotEmpty()) {
-//                    Text("Client ID: ${clientId.value}")
-//                    Text("Request URI: ${requestUri.value}")
-//                }
-//            }
-//        }
-//    }
-//}
-
-//@Composable
-//fun WalletApp(
-//    context: Context,
-//    intent: Intent?,
-//    issuanceService: IssuanceService,
-//    vpTokenService: VpTokenService
-//) {
-//    val clientId = remember { mutableStateOf("") }
-//    val requestUri = remember { mutableStateOf("") }
-//    var status by remember { mutableStateOf("Press the button to request VC") }
-//    var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
-//
-//    LaunchedEffect(intent) {
-//        handleDeepLink(context, intent, clientId, requestUri, vpTokenService)
-//    }
-//
-//    Scaffold { paddingValues ->
-//        Box(
-//            modifier = Modifier
-//                .fillMaxSize()
-//                .padding(paddingValues),
-//            contentAlignment = Alignment.Center
-//        ) {
-//            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//                Text(text = status, modifier = Modifier.padding(16.dp))
-//                Spacer(modifier = Modifier.height(16.dp))
-//
-//                Button(onClick = {
-//                    requestVC(context, issuanceService, { result ->
-//                        status = result
-//                    }) { claims ->
-//                        credentialClaims = claims // Update UI with received claims
-//                    }
-//                }) {
-//                    Text("Request VC")
-//                }
-//
-//                credentialClaims?.let { CredentialCard(it) } // Show card if claims exist
-//            }
-//        }
-//    }
-//}
-
 @Composable
 fun WalletApp(
     context: Context,
     intent: Intent?,
     issuanceService: IssuanceService,
-    vpTokenService: VpTokenService
-) {
+    vpTokenService: VpTokenService) {
+
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
@@ -204,6 +118,39 @@ fun WalletApp(
     }
 }
 
+fun requestVC(
+    context: Context,
+    issuanceService: IssuanceService,
+    onResult: (String) -> Unit,
+    onCredentialReceived: (Map<String, String>) -> Unit) {
+
+    val prefs = getEncryptedPrefs(context)
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val accessToken = issuanceService.obtainAccessToken()
+            val nonce = issuanceService.getNonce(accessToken.access_token)
+            val jwtProof = issuanceService.createJwtProof(nonce)
+            val storedCredential = issuanceService.requestCredential(accessToken.access_token, jwtProof)
+            val claims = issuanceService.decodeCredential(storedCredential)
+            // todo -> fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
+            prefs.edit().putString("stored_vc", storedCredential).apply()
+//            val claims = mapOf(
+//                "Company Name" to "Cognity",
+//                "Given Name" to "Kyriakos Mandalas",
+//                "Job Title" to "Kudu Ambassador"
+//            )
+            withContext(Dispatchers.Main) {
+                onResult("VC stored securely") // Show success message in snackbar
+                onCredentialReceived(claims)  // Update UI with claims
+            }
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Error requesting VC", e)
+            withContext(Dispatchers.Main) {
+                onResult("Error: ${e.message}") // Show error in snackbar
+            }
+        }
+    }
+}
 
 // Function to handle deep link and extract data
 fun handleDeepLink(context: Context,
@@ -211,6 +158,7 @@ fun handleDeepLink(context: Context,
                    clientId: MutableState<String>,
                    requestUri: MutableState<String>,
                    vpTokenService: VpTokenService) {
+
     intent?.data?.let { deepLinkUri ->
         // Extract client_id and request_uri from the deep link
         val extractedClientId = deepLinkUri.getQueryParameter("client_id")
@@ -239,78 +187,6 @@ fun handleDeepLink(context: Context,
                 Log.e("WalletApp", "Error during VP handling", e)
             } finally {
                 //...
-            }
-        }
-    }
-}
-
-// Request a predefined VC
-//fun requestVC(
-//    context: Context,
-//    issuanceService: IssuanceService,
-//    onResult: (String) -> Unit,
-//    onCredentialReceived: (Map<String, String>) -> Unit // Callback for UI
-//) {
-//    val prefs = getEncryptedPrefs(context)
-//    CoroutineScope(Dispatchers.IO).launch {
-//        try {
-//            val accessToken = issuanceService.obtainAccessToken()
-//            val nonce = issuanceService.getNonce(accessToken.access_token)
-//            val jwtProof = issuanceService.createJwtProof(nonce)
-//            val storedCredential = issuanceService.requestCredential(accessToken.access_token, jwtProof)
-//
-//            prefs.edit().putString("stored_vc", storedCredential).apply()
-//            // Simulating extraction of claims (replace with real parsing)
-//            val claims = mapOf(
-//                "Company Name" to "Example Corp",
-//                "Given Name" to "John",
-//                "Age" to "30"
-//            )
-//
-//            withContext(Dispatchers.Main) {
-//                onResult("VC stored securely")
-//                onCredentialReceived(claims) // Send claims to UI
-//            }
-//        } catch (e: Exception) {
-//            Log.e("WalletApp", "Error requesting VC", e)
-//            withContext(Dispatchers.Main) { onResult("Error: ${e.message}") }
-//        } finally {
-//            // ...
-//        }
-//    }
-//}
-
-fun requestVC(
-    context: Context,
-    issuanceService: IssuanceService,
-    onResult: (String) -> Unit,
-    onCredentialReceived: (Map<String, String>) -> Unit
-) {
-    val prefs = getEncryptedPrefs(context)
-
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val accessToken = issuanceService.obtainAccessToken()
-            val nonce = issuanceService.getNonce(accessToken.access_token)
-            val jwtProof = issuanceService.createJwtProof(nonce)
-            val storedCredential = issuanceService.requestCredential(accessToken.access_token, jwtProof)
-
-            prefs.edit().putString("stored_vc", storedCredential).apply()
-
-            val claims = mapOf(
-                "Company Name" to "Cognity",
-                "Given Name" to "Kyriakos Mandalas",
-                "Job Title" to "Kudu Ambassador"
-            )
-
-            withContext(Dispatchers.Main) {
-                onResult("VC stored securely") // Show success message in snackbar
-                onCredentialReceived(claims)  // Update UI with claims
-            }
-        } catch (e: Exception) {
-            Log.e("WalletApp", "Error requesting VC", e)
-            withContext(Dispatchers.Main) {
-                onResult("Error: ${e.message}") // Show error in snackbar
             }
         }
     }

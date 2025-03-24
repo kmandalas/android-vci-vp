@@ -3,6 +3,7 @@ package com.example.eudiwemu.service
 import android.util.Log
 import com.authlete.sd.Disclosure
 import com.authlete.sd.SDJWT
+import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.model.AuthorizationRequest
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
@@ -15,15 +16,12 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.text.ParseException
@@ -33,11 +31,6 @@ class VpTokenService(
     private val client: HttpClient,
     private val walletKeyManager: WalletKeyManager
 ) {
-
-    companion object {
-        private const val KEY_ALIAS = "wallet-key"
-        private const val VERIFIER_URL = "http://192.168.1.65:9002/verifier/verify-vp" // todo
-    }
 
     suspend fun getRequestObject(requestUri: String): AuthorizationRequest {
         val response: String = client.get(requestUri).body()
@@ -135,7 +128,7 @@ class VpTokenService(
 
         // Create a signer
         // val signer: JWSSigner = DefaultJWSSignerFactory().createJWSSigner(signingKey)
-        val signer = AndroidKeystoreSigner(KEY_ALIAS) // ✅ Uses Android Keystore API
+        val signer = AndroidKeystoreSigner(AppConfig.KEY_ALIAS) // ✅ Uses Android Keystore API
 
         // Let the signer sign the binding JWT
         jwt.sign(signer)
