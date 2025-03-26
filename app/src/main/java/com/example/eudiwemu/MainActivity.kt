@@ -160,7 +160,7 @@ fun WalletApp(
 
                         // Show error message in Snackbar
                         snackbarHostState.showSnackbar(
-                            message = "Error: ${e.message}",
+                            message = "❌ Error: ${e.message}",
                             actionLabel = "Dismiss",
                             duration = SnackbarDuration.Long
                         )
@@ -194,13 +194,13 @@ fun requestVC(
 //                "Job Title" to "Kudu Ambassador"
 //            )
             withContext(Dispatchers.Main) {
-                onResult("VC stored securely") // Show success message in snackbar
+                onResult("✅ VC stored securely") // Show success message in snackbar
                 onCredentialReceived(claims)  // Update UI with claims
             }
         } catch (e: Exception) {
             Log.e("WalletApp", "Error requesting VC", e)
             withContext(Dispatchers.Main) {
-                onResult("Error: ${e.message}") // Show error in snackbar
+                onResult("❌ Error: ${e.message}") // Show error in snackbar
             }
         }
     }
