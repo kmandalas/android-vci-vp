@@ -33,8 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.authlete.sd.Disclosure
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
+import com.example.eudiwemu.ui.ClaimSelectionDialog
 import com.example.eudiwemu.ui.CredentialCard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,17 +67,34 @@ fun WalletApp(
     context: Context,
     intent: Intent?,
     issuanceService: IssuanceService,
-    vpTokenService: VpTokenService) {
-
+    vpTokenService: VpTokenService
+) {
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
+    val responseUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
-    var isLoading by remember { mutableStateOf(false) }  // Add loading state
+    var isLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
 
+    // Load stored credential on launch
+    LaunchedEffect(Unit) {
+        val prefs = getEncryptedPrefs(context)
+        val storedCredential = prefs.getString("stored_vc", null)
+        if (!storedCredential.isNullOrEmpty()) {
+            try {
+                val claims = issuanceService.decodeCredential(storedCredential)
+                credentialClaims = claims
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error decoding stored VC", e)
+            }
+        }
+    }
+
+    // Handle deep links
     LaunchedEffect(intent) {
-        handleDeepLink(context, intent, clientId, requestUri, vpTokenService)
+        handleDeepLink(context, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)
     }
 
     Scaffold(
@@ -91,10 +110,10 @@ fun WalletApp(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (isLoading) {
-                    CircularProgressIndicator() // Show loading indicator when isLoading is true
+                    CircularProgressIndicator()
                 } else {
                     Button(onClick = {
-                        isLoading = true  // Start loading
+                        isLoading = true
                         requestVC(context, issuanceService, { result ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(
@@ -103,7 +122,7 @@ fun WalletApp(
                                     duration = SnackbarDuration.Short
                                 )
                             }
-                            isLoading = false  // Stop loading
+                            isLoading = false
                         }) { claims ->
                             credentialClaims = claims
                         }
@@ -115,6 +134,41 @@ fun WalletApp(
                 credentialClaims?.let { CredentialCard(it) }
             }
         }
+    }
+
+    // Show claim selection dialog when claims are available
+    selectedClaims.value?.let { claims ->
+        ClaimSelectionDialog(
+            claims = claims,
+            onDismiss = { selectedClaims.value = null },
+            onConfirm = { selected ->
+                coroutineScope.launch {
+                    try {
+                        val storedCredential = getEncryptedPrefs(context).getString("stored_vc", null).orEmpty()
+                        val vpToken = vpTokenService.createVP(storedCredential, selected)
+                        // Capture response from server
+                        val serverResponse = vpTokenService.sendVpTokenToVerifier(vpToken.toString(), responseUri.value)
+
+                        // Show server response in Snackbar
+                        snackbarHostState.showSnackbar(
+                            message = "Verifier Response: $serverResponse",
+                            actionLabel = "Dismiss",
+                            duration = SnackbarDuration.Long
+                        )
+                    } catch (e: Exception) {
+                        Log.e("WalletApp", "Error sending VP Token", e)
+
+                        // Show error message in Snackbar
+                        snackbarHostState.showSnackbar(
+                            message = "Error: ${e.message}",
+                            actionLabel = "Dismiss",
+                            duration = SnackbarDuration.Long
+                        )
+                    }
+                }
+                selectedClaims.value = null // Dismiss dialog after confirming selection
+            }
+        )
     }
 }
 
@@ -153,45 +207,40 @@ fun requestVC(
 }
 
 // Function to handle deep link and extract data
-fun handleDeepLink(context: Context,
-                   intent: Intent?,
-                   clientId: MutableState<String>,
-                   requestUri: MutableState<String>,
-                   vpTokenService: VpTokenService) {
-
+fun handleDeepLink(
+    context: Context,
+    intent: Intent?,
+    clientId: MutableState<String>,
+    requestUri: MutableState<String>,
+    vpTokenService: VpTokenService,
+    selectedClaims: MutableState<List<Disclosure>?>, // Store claims for UI,
+    responseUri: MutableState<String>,
+) {
     intent?.data?.let { deepLinkUri ->
-        // Extract client_id and request_uri from the deep link
         val extractedClientId = deepLinkUri.getQueryParameter("client_id")
         val extractedRequestUri = deepLinkUri.getQueryParameter("request_uri")
 
-        // Update the state to reflect the deep link parameters
         extractedClientId?.let { clientId.value = it }
         extractedRequestUri?.let { requestUri.value = it }
-
-        // Log for debugging
-        Log.d("DeepLink", "Client ID: $extractedClientId")
-        Log.d("DeepLink", "Request URI: $extractedRequestUri")
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = vpTokenService.getRequestObject(extractedRequestUri.orEmpty())
-                Log.d("Request Definition received: ",  result.toString())
-
+                responseUri.value = result.response_uri;
                 val prefs = getEncryptedPrefs(context)
                 val storedCredential = prefs.getString("stored_vc", null).orEmpty()
                 val claims = vpTokenService.extractRequestedClaims(result, storedCredential)
-                val vpToken = vpTokenService.createVP(storedCredential, claims)
-                Log.d("Requested claims: ", claims.toString())
-                vpTokenService.sendVpTokenToVerifier(vpToken.toString(), result.response_uri)
+
+                // Trigger UI to let user select claims
+                withContext(Dispatchers.Main) {
+                    selectedClaims.value = claims
+                }
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error during VP handling", e)
-            } finally {
-                //...
             }
         }
     }
 }
-
 
 // Enc. Shared prefs handle
 fun getEncryptedPrefs(context: Context): SharedPreferences {
