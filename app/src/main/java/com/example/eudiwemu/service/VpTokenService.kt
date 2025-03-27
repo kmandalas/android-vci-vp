@@ -4,7 +4,7 @@ import android.util.Log
 import com.authlete.sd.Disclosure
 import com.authlete.sd.SDJWT
 import com.example.eudiwemu.config.AppConfig
-import com.example.eudiwemu.model.AuthorizationRequest
+import com.example.eudiwemu.dto.AuthorizationRequestResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
 import com.nimbusds.jose.JOSEException
@@ -32,7 +32,7 @@ class VpTokenService(
     private val walletKeyManager: WalletKeyManager
 ) {
 
-    suspend fun getRequestObject(requestUri: String): AuthorizationRequest {
+    suspend fun getRequestObject(requestUri: String): AuthorizationRequestResponse {
         val response: String = client.get(requestUri).body()
         return Json.decodeFromString(response)
     }
@@ -54,7 +54,7 @@ class VpTokenService(
         }
     }
 
-    fun extractRequestedClaims(requestObject: AuthorizationRequest, storedCredential: String): List<Disclosure> {
+    fun extractRequestedClaims(requestObject: AuthorizationRequestResponse, storedCredential: String): List<Disclosure> {
         try {
             // Extract requested claim paths
             val requestedClaimPaths = extractRequestedClaimPaths(requestObject)
@@ -72,7 +72,7 @@ class VpTokenService(
         }
     }
 
-    private fun extractRequestedClaimPaths(requestObject: AuthorizationRequest): List<String> {
+    private fun extractRequestedClaimPaths(requestObject: AuthorizationRequestResponse): List<String> {
         return try {
             requestObject.presentation_definition.input_descriptors
                 .flatMap { it.constraints.fields }

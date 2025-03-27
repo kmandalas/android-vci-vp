@@ -2,10 +2,8 @@ package com.example.eudiwemu
 
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,33 +28,69 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.fragment.app.FragmentActivity
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.authlete.sd.Disclosure
+import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.ui.ClaimSelectionDialog
 import com.example.eudiwemu.ui.CredentialCard
+import com.example.eudiwemu.ui.LoginScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
 
-class MainActivity : ComponentActivity() {
-    // Inject dependencies using Koin
+class MainActivity : FragmentActivity() {
     private val issuanceService: IssuanceService by inject()
     private val vpTokenService: VpTokenService by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // No need to check for stored token; go straight to the LoginScreen
         setContent {
-            WalletApp(
-                applicationContext,
+            MainNavHost(
+                activity = this,
                 intent,
-                issuanceService,
-                vpTokenService
+                issuanceService = issuanceService,
+                vpTokenService = vpTokenService
+            )
+        }
+    }
+}
+
+@Composable
+fun MainNavHost(
+    activity: FragmentActivity,
+    intent: Intent?,
+    issuanceService: IssuanceService,
+    vpTokenService: VpTokenService
+) {
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "login_screen") {
+        composable("login_screen") {
+            LoginScreen(
+                activity = activity,
+                viewModel = AuthenticationViewModel(),
+                navController = navController,
+                issuanceService = issuanceService
+            )
+        }
+        composable("wallet_app_screen") {
+            WalletApp(
+                activity = activity,
+                intent = intent,
+                context = LocalContext.current,
+                issuanceService = issuanceService,
+                vpTokenService = vpTokenService
             )
         }
     }
@@ -64,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun WalletApp(
+    activity: FragmentActivity,
     context: Context,
     intent: Intent?,
     issuanceService: IssuanceService,
@@ -73,28 +108,32 @@ fun WalletApp(
     val requestUri = remember { mutableStateOf("") }
     val responseUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
+    val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
 
     // Load stored credential on launch
     LaunchedEffect(Unit) {
-        val prefs = getEncryptedPrefs(context)
-        val storedCredential = prefs.getString("stored_vc", null)
-        if (!storedCredential.isNullOrEmpty()) {
-            try {
-                val claims = issuanceService.decodeCredential(storedCredential)
-                credentialClaims = claims
-            } catch (e: Exception) {
-                Log.e("WalletApp", "Error decoding stored VC", e)
+        // Asynchronously fetch preferences
+        getEncryptedPrefs(context, activity as FragmentActivity, { prefs ->
+            val storedCredential = prefs.getString("stored_vc", null)
+            if (!storedCredential.isNullOrEmpty()) {
+                try {
+                    val claims = issuanceService.decodeCredential(storedCredential)
+                    credentialClaims = claims
+                } catch (e: Exception) {
+                    Log.e("WalletApp", "Error decoding stored VC", e)
+                }
             }
-        }
+        }, { exception ->
+            Log.e("WalletApp", "Error fetching encrypted prefs: $exception")
+        })
     }
 
     // Handle deep links
     LaunchedEffect(intent) {
-        handleDeepLink(context, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)
+        handleDeepLink(context, activity, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)
     }
 
     Scaffold(
@@ -114,7 +153,7 @@ fun WalletApp(
                 } else {
                     Button(onClick = {
                         isLoading = true
-                        requestVC(context, issuanceService, { result ->
+                        requestVC(activity, context, issuanceService, { result ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(
                                     message = result,
@@ -142,30 +181,7 @@ fun WalletApp(
             claims = claims,
             onDismiss = { selectedClaims.value = null },
             onConfirm = { selected ->
-                coroutineScope.launch {
-                    try {
-                        val storedCredential = getEncryptedPrefs(context).getString("stored_vc", null).orEmpty()
-                        val vpToken = vpTokenService.createVP(storedCredential, selected)
-                        // Capture response from server
-                        val serverResponse = vpTokenService.sendVpTokenToVerifier(vpToken.toString(), responseUri.value)
-
-                        // Show server response in Snackbar
-                        snackbarHostState.showSnackbar(
-                            message = "Verifier Response: $serverResponse",
-                            actionLabel = "Dismiss",
-                            duration = SnackbarDuration.Long
-                        )
-                    } catch (e: Exception) {
-                        Log.e("WalletApp", "Error sending VP Token", e)
-
-                        // Show error message in Snackbar
-                        snackbarHostState.showSnackbar(
-                            message = "❌ Error: ${e.message}",
-                            actionLabel = "Dismiss",
-                            duration = SnackbarDuration.Long
-                        )
-                    }
-                }
+                submitVpToken(context, activity, vpTokenService, selected, responseUri.value, snackbarHostState)
                 selectedClaims.value = null // Dismiss dialog after confirming selection
             }
         )
@@ -173,47 +189,59 @@ fun WalletApp(
 }
 
 fun requestVC(
+    activity: FragmentActivity,
     context: Context,
     issuanceService: IssuanceService,
     onResult: (String) -> Unit,
-    onCredentialReceived: (Map<String, String>) -> Unit) {
+    onCredentialReceived: (Map<String, String>) -> Unit
+) {
+    // Start by asynchronously fetching encrypted preferences
+    getEncryptedPrefs(context, activity, { prefs ->
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val accessToken = prefs.getString("access_token", "")
+                if (accessToken.isNullOrEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        onResult("❌ Access token is missing!")
+                    }
+                    return@launch
+                }
 
-    val prefs = getEncryptedPrefs(context)
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val accessToken = issuanceService.obtainAccessToken()
-            val nonce = issuanceService.getNonce(accessToken.access_token)
-            val jwtProof = issuanceService.createJwtProof(nonce)
-            val storedCredential = issuanceService.requestCredential(accessToken.access_token, jwtProof)
-            val claims = issuanceService.decodeCredential(storedCredential)
-            // todo -> fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
-            prefs.edit().putString("stored_vc", storedCredential).apply()
-//            val claims = mapOf(
-//                "Company Name" to "Cognity",
-//                "Given Name" to "Kyriakos Mandalas",
-//                "Job Title" to "Kudu Ambassador"
-//            )
-            withContext(Dispatchers.Main) {
-                onResult("✅ VC stored securely") // Show success message in snackbar
-                onCredentialReceived(claims)  // Update UI with claims
-            }
-        } catch (e: Exception) {
-            Log.e("WalletApp", "Error requesting VC", e)
-            withContext(Dispatchers.Main) {
-                onResult("❌ Error: ${e.message}") // Show error in snackbar
+                val nonce = issuanceService.getNonce(accessToken)
+                val jwtProof = issuanceService.createJwtProof(nonce)
+                val storedCredential = issuanceService.requestCredential(accessToken, jwtProof)
+                val claims = issuanceService.decodeCredential(storedCredential)
+
+                // Store VC securely
+                prefs.edit().putString("stored_vc", storedCredential).apply()
+
+                // Inform the UI about success
+                withContext(Dispatchers.Main) {
+                    onResult("✅ VC stored securely")
+                    onCredentialReceived(claims)
+                }
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error requesting VC", e)
+                withContext(Dispatchers.Main) {
+                    onResult("❌ Error: ${e.message}") // Show error in snackbar
+                }
             }
         }
-    }
+    }, { exception ->
+        Log.e("WalletApp", "Error fetching encrypted prefs: $exception")
+        onResult("❌ Failed to retrieve preferences.")
+    })
 }
 
 // Function to handle deep link and extract data
 fun handleDeepLink(
     context: Context,
+    activity: FragmentActivity,
     intent: Intent?,
     clientId: MutableState<String>,
     requestUri: MutableState<String>,
     vpTokenService: VpTokenService,
-    selectedClaims: MutableState<List<Disclosure>?>, // Store claims for UI,
+    selectedClaims: MutableState<List<Disclosure>?>, // Store claims for UI
     responseUri: MutableState<String>,
 ) {
     intent?.data?.let { deepLinkUri ->
@@ -226,15 +254,30 @@ fun handleDeepLink(
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val result = vpTokenService.getRequestObject(extractedRequestUri.orEmpty())
-                responseUri.value = result.response_uri;
-                val prefs = getEncryptedPrefs(context)
-                val storedCredential = prefs.getString("stored_vc", null).orEmpty()
-                val claims = vpTokenService.extractRequestedClaims(result, storedCredential)
+                responseUri.value = result.response_uri
 
-                // Trigger UI to let user select claims
+                // Fetch encrypted preferences securely
                 withContext(Dispatchers.Main) {
-                    selectedClaims.value = claims
+                    getEncryptedPrefs(
+                        context,
+                        activity,
+                        onSuccess = { prefs ->
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val storedCredential = prefs.getString("stored_vc", null).orEmpty()
+                                val claims = vpTokenService.extractRequestedClaims(result, storedCredential)
+
+                                // Update UI with selected claims
+                                withContext(Dispatchers.Main) {
+                                    selectedClaims.value = claims
+                                }
+                            }
+                        },
+                        onFailure = { e ->
+                            Log.e("WalletApp", "Failed to get encrypted prefs", e)
+                        }
+                    )
                 }
+
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error during VP handling", e)
             }
@@ -242,20 +285,58 @@ fun handleDeepLink(
     }
 }
 
-// Enc. Shared prefs handle
-fun getEncryptedPrefs(context: Context): SharedPreferences {
-    val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        //.setUserAuthenticationRequired(true) --> todo
-        .build()
-
-    return EncryptedSharedPreferences.create(
+fun submitVpToken(
+    context: Context,
+    activity: FragmentActivity,
+    vpTokenService: VpTokenService,
+    selectedClaims: List<Disclosure>,
+    responseUri: String,
+    snackbarHostState: SnackbarHostState
+) {
+    getEncryptedPrefs(
         context,
-        "wallet_prefs",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        activity,
+        onSuccess = { prefs ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val storedCredential = prefs.getString("stored_vc", null).orEmpty()
+                    val vpToken = vpTokenService.createVP(storedCredential, selectedClaims)
+
+                    // Capture response from server
+                    val serverResponse = vpTokenService.sendVpTokenToVerifier(vpToken.toString(), responseUri)
+
+                    // Show server response in Snackbar
+                    withContext(Dispatchers.Main) {
+                        snackbarHostState.showSnackbar(
+                            message = "Verifier Response: $serverResponse",
+                            actionLabel = "Dismiss",
+                            duration = SnackbarDuration.Long
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e("WalletApp", "Error sending VP Token", e)
+
+                    // Show error message in Snackbar
+                    withContext(Dispatchers.Main) {
+                        snackbarHostState.showSnackbar(
+                            message = "❌ Error: ${e.message}",
+                            actionLabel = "Dismiss",
+                            duration = SnackbarDuration.Long
+                        )
+                    }
+                }
+            }
+        },
+        onFailure = { e ->
+            Log.e("WalletApp", "Failed to get encrypted prefs", e)
+
+            CoroutineScope(Dispatchers.Main).launch {
+                snackbarHostState.showSnackbar(
+                    message = "❌ Failed to access secure storage",
+                    actionLabel = "Dismiss",
+                    duration = SnackbarDuration.Long
+                )
+            }
+        }
     )
 }
-
-

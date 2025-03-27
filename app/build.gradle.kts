@@ -83,6 +83,7 @@ dependencies {
     // Security & Cryptography
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.nimbusds:nimbus-jose-jwt:9.37")
+    implementation ("androidx.biometric:biometric:1.4.0-alpha02")
 
     // Authlete SD-JWT
     implementation("com.authlete:sd-jwt:1.5")
@@ -90,5 +91,6 @@ dependencies {
     // Other
     implementation ("com.google.code.gson:gson:2.8.8")
     implementation ("io.insert-koin:koin-android:3.5.0")
+    implementation ("androidx.navigation:navigation-compose:2.4.0-alpha10")
 
 }
