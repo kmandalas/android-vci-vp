@@ -27,7 +27,6 @@
 
 ### TODOs
 
-- fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
 - display more info when selecting claims during VP
 - implement scan QR code for VP
-- handle access_token expiration
+- handle access_token expiration while app is in-use
