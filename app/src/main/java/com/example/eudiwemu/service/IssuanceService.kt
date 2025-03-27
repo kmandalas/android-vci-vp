@@ -93,7 +93,7 @@ class IssuanceService(
         }
         val jsonResponse: Map<String, String> = response.body()
         // todo -> fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
-        // verifyCredential(jsonResponse["credential"].orEmpty())
+        verifyCredential(jsonResponse["credential"].orEmpty())
         return jsonResponse["credential"] ?: throw Exception("Failed to request credential")
     }
 

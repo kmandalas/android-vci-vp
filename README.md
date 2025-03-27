@@ -26,3 +26,7 @@
 5. If everything is OK you will get a "✅ VP Token is valid!" message on screen
 
 ### TODOs
+
+- fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
+- display more info when selecting claims during VP
+- implement scan QR code for VP
