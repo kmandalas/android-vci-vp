@@ -1,4 +1,4 @@
-package com.example.eudiwemu
+package com.example.eudiwemu.ui.viewmodel
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
