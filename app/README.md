@@ -23,6 +23,6 @@
 2. Open Browser and go to: https://vp-verifier.onrender.com/verifier/invoke-wallet
 3. Press "OPEN WITH YOUR WALLET"
 4. Re-authenticate with biometrics if needed and follow the steps
-5. If everything is OK you will get a "" message on screen
+5. If everything is OK you will get a "✅ VP Token is valid!" message on screen
 
 ### TODOs
