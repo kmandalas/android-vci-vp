@@ -74,26 +74,6 @@ fun WalletScreen(
         }
     }
 
-//    LaunchedEffect(Unit) {
-//        isLoading = true
-//        try {
-//            val result = requestVC(activity, context, issuanceService)
-//            if (result.isSuccess) {
-//                val (message, claims) = result.getOrNull()!!
-//                credentialClaims = claims
-//                snackbarHostState.showSnackbar(message)
-//            } else {
-//                snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
-//            }
-//        } catch (e: Exception) {
-//            Log.e("WalletScreen", "Error requesting VC", e)
-//            snackbarHostState.showSnackbar("❌ Error requesting VC: ${e.message}")
-//        } finally {
-//            isLoading = false
-//        }
-//    }
-
-
     // Handle deep links
     LaunchedEffect(intent) {
         handleDeepLink(context, activity, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)

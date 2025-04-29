@@ -104,47 +104,6 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
-
-//    override fun onNewIntent(intent: Intent) {
-//        super.onNewIntent(intent)
-//
-//        lifecycleScope.launch {
-//            try {
-//                val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
-//
-//                // Exchange code if deep link contains OAuth2 code
-//                intent.data?.getQueryParameter("code")?.let { code ->
-//                    val codeVerifier = PkceManager.getCodeVerifier(this@MainActivity)
-//                    val result = issuanceService.exchangeAuthorizationCodeForToken(
-//                        code,
-//                        codeVerifier,
-//                        redirectUri = "myapp://callback"
-//                    )
-//                    if (result.isSuccess) {
-//                        prefs.edit()
-//                            .putString("access_token", result.getOrNull())
-//                            .apply()
-//
-//                        // ✅ After success, navigate to WalletScreen
-//                        setContent {
-//                            MainNavHost(
-//                                activity = this@MainActivity,
-//                                intent = null, // no need to pass deep link now
-//                                issuanceService = issuanceService,
-//                                vpTokenService = vpTokenService,
-//                                isAuthenticated = true // force WalletScreen
-//                            )
-//                        }
-//                    } else {
-//                        Log.e("MainActivity", "Token exchange failed: ${result.exceptionOrNull()?.message}")
-//                    }
-//                }
-//            } catch (e: Exception) {
-//                Log.e("MainActivity", "Error in onNewIntent", e)
-//            }
-//        }
-//    }
-
 }
 
 @Composable
