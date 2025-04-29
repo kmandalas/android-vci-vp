@@ -20,11 +20,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.basicAuth
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
+import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import java.util.Date
 
@@ -33,14 +35,40 @@ class IssuanceService(
     private val walletKeyManager: WalletKeyManager
 ) {
 
+    @Deprecated("replaced client_credentials with authorization_code flow")
     suspend fun obtainAccessToken(): AccessTokenResponse {
-        val response: AccessTokenResponse = client.post(AppConfig.AUTH_SERVER_URL) {
+        val response: AccessTokenResponse = client.post(AppConfig.AUTH_SERVER_TOKEN_URL) {
             contentType(ContentType.Application.FormUrlEncoded)
             basicAuth(AppConfig.CLIENT_ID, AppConfig.CLIENT_SECRET)
             setBody("grant_type=client_credentials&scope=openid vc:issue")
         }.body()
 
         return response
+    }
+
+    suspend fun exchangeAuthorizationCodeForToken(
+        code: String,
+        codeVerifier: String,
+        redirectUri: String = "myapp://callback"
+    ): Result<String> {
+        return try {
+            val response = client.submitForm(
+                url = AppConfig.AUTH_SERVER_TOKEN_URL,
+                formParameters = Parameters.build {
+                    append("grant_type", "authorization_code")
+                    append("code", code)
+                    append("redirect_uri", redirectUri)
+                    append("code_verifier", codeVerifier)
+                }
+            ) {
+                basicAuth(AppConfig.CLIENT_ID, AppConfig.CLIENT_SECRET)
+            }
+
+            val accessTokenResponse = response.body<AccessTokenResponse>()
+            Result.success(accessTokenResponse.access_token)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun getNonce(accessToken: String): String {

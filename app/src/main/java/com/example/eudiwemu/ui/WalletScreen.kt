@@ -2,6 +2,7 @@ package com.example.eudiwemu.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.authlete.sd.Disclosure
+import com.example.eudiwemu.config.AppConfig
+import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
@@ -71,6 +74,26 @@ fun WalletScreen(
         }
     }
 
+//    LaunchedEffect(Unit) {
+//        isLoading = true
+//        try {
+//            val result = requestVC(activity, context, issuanceService)
+//            if (result.isSuccess) {
+//                val (message, claims) = result.getOrNull()!!
+//                credentialClaims = claims
+//                snackbarHostState.showSnackbar(message)
+//            } else {
+//                snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
+//            }
+//        } catch (e: Exception) {
+//            Log.e("WalletScreen", "Error requesting VC", e)
+//            snackbarHostState.showSnackbar("❌ Error requesting VC: ${e.message}")
+//        } finally {
+//            isLoading = false
+//        }
+//    }
+
+
     // Handle deep links
     LaunchedEffect(intent) {
         handleDeepLink(context, activity, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)
@@ -98,33 +121,27 @@ fun WalletScreen(
                         // Start a coroutine to call the suspend function requestVC
                         coroutineScope.launch {
                             try {
-                                // Call the suspend function requestVC
-                                val result = requestVC(activity, context, issuanceService)
+                                val prefs = getEncryptedPrefs(context, activity)
+                                val accessToken = prefs.getString("access_token", null)
 
-                                // Set isLoading to false immediately after receiving the result
-                                isLoading = false
-
-                                // Check if the result was successful or failed
-                                if (result.isSuccess) {
-                                    val (message, claims) = result.getOrNull()!!
-
-                                    // Update credentialClaims immediately
-                                    credentialClaims = claims
-
-                                    // Show success message in snackbar
-                                    snackbarHostState.showSnackbar(
-                                        message = message,
-                                        actionLabel = "Dismiss",
-                                        duration = SnackbarDuration.Short
-                                    )
+                                if (accessToken.isNullOrEmpty()) {
+                                    // No access token => need to start OAuth Authorization
+                                    startAuthorizationFlow(activity, context)
+                                    isLoading = false // Stop loading spinner until user comes back
                                 } else {
-                                    // Show failure message in snackbar
-                                    snackbarHostState.showSnackbar(
-                                        message = "❌ Error: ${result.exceptionOrNull()?.message}",
-                                        actionLabel = "Dismiss",
-                                        duration = SnackbarDuration.Long
-                                    )
+                                    // Already have token => can request VC
+                                    val result = requestVC(activity, context, issuanceService)
+
+                                    isLoading = false
+                                    if (result.isSuccess) {
+                                        val (message, claims) = result.getOrNull()!!
+                                        credentialClaims = claims
+                                        snackbarHostState.showSnackbar(message)
+                                    } else {
+                                        snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
+                                    }
                                 }
+
                             } catch (e: Exception) {
                                 Log.e("WalletApp", "Error requesting VC", e)
                                 // Set isLoading to false in case of exception
@@ -164,6 +181,26 @@ fun WalletScreen(
         )
     }
 }
+
+fun startAuthorizationFlow(activity: FragmentActivity, context: Context) {
+    val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
+
+    val authorizationUri = Uri.Builder()
+        .scheme("http")
+        .encodedAuthority(AppConfig.AUTH_SERVER_HOST)
+        .path("/oauth2/authorize")
+        .appendQueryParameter("response_type", "code")
+        .appendQueryParameter("client_id", "wallet-client")
+        .appendQueryParameter("scope", "VerifiablePortableDocumentA1")
+        .appendQueryParameter("redirect_uri", "myapp://callback")
+        .appendQueryParameter("code_challenge", codeChallenge)
+        .appendQueryParameter("code_challenge_method", "S256")
+        .build()
+
+    val intent = Intent(Intent.ACTION_VIEW, authorizationUri)
+    activity.startActivity(intent)
+}
+
 
 // Function to handle VC issuance & storage
 suspend fun requestVC(

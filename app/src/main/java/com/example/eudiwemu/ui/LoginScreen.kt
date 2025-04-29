@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
-import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.security.showBiometricPrompt
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
@@ -80,16 +79,16 @@ fun LoginScreen(
                                     return@launch
                                 }
 
-                                // Always request a new access token
-                                val accessToken = issuanceService.obtainAccessToken()
-
-                                // Get encrypted preferences and save access token
-                                val prefs = getEncryptedPrefs(activity.applicationContext, activity)
-                                prefs.edit()
-                                    .putString("access_token", accessToken.access_token)
-                                    .apply()
-
-                                viewModel.authenticateSuccess() // Update authentication state
+//                                // Always request a new access token
+//                                val accessToken = issuanceService.obtainAccessToken()
+//
+//                                // Get encrypted preferences and save access token
+//                                val prefs = getEncryptedPrefs(activity.applicationContext, activity)
+//                                prefs.edit()
+//                                    .putString("access_token", accessToken.access_token)
+//                                    .apply()
+//
+//                                viewModel.authenticateSuccess() // Update authentication state
 
                                 // Navigate to WalletApp screen with smooth transition
                                 navController.navigate("wallet_app_screen") {

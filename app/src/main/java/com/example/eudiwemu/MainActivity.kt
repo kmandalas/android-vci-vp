@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
@@ -73,6 +74,76 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+
+        intent.data?.let { uri ->
+            val code = uri.getQueryParameter("code")
+            if (code != null) {
+                Log.d("OAuth", "Authorization code: $code")
+
+                lifecycleScope.launch {
+                    val codeVerifier = PkceManager.getCodeVerifier(this@MainActivity.applicationContext)
+                    val result = issuanceService.exchangeAuthorizationCodeForToken(code, codeVerifier)
+
+                    if (result.isSuccess) {
+                        val accessToken = result.getOrNull()
+
+                        // Save the access token securely
+                        val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
+                        prefs.edit().putString("access_token", accessToken).apply()
+
+                        Log.d("OAuth", "Access token saved!")
+
+                        // Now you can trigger `requestVC` directly if you want!
+                    } else {
+                        Log.e("OAuth", "Failed to get access token: ${result.exceptionOrNull()?.message}")
+                    }
+                }
+            }
+        }
+    }
+
+//    override fun onNewIntent(intent: Intent) {
+//        super.onNewIntent(intent)
+//
+//        lifecycleScope.launch {
+//            try {
+//                val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
+//
+//                // Exchange code if deep link contains OAuth2 code
+//                intent.data?.getQueryParameter("code")?.let { code ->
+//                    val codeVerifier = PkceManager.getCodeVerifier(this@MainActivity)
+//                    val result = issuanceService.exchangeAuthorizationCodeForToken(
+//                        code,
+//                        codeVerifier,
+//                        redirectUri = "myapp://callback"
+//                    )
+//                    if (result.isSuccess) {
+//                        prefs.edit()
+//                            .putString("access_token", result.getOrNull())
+//                            .apply()
+//
+//                        // ✅ After success, navigate to WalletScreen
+//                        setContent {
+//                            MainNavHost(
+//                                activity = this@MainActivity,
+//                                intent = null, // no need to pass deep link now
+//                                issuanceService = issuanceService,
+//                                vpTokenService = vpTokenService,
+//                                isAuthenticated = true // force WalletScreen
+//                            )
+//                        }
+//                    } else {
+//                        Log.e("MainActivity", "Token exchange failed: ${result.exceptionOrNull()?.message}")
+//                    }
+//                }
+//            } catch (e: Exception) {
+//                Log.e("MainActivity", "Error in onNewIntent", e)
+//            }
+//        }
+//    }
 
 }
 

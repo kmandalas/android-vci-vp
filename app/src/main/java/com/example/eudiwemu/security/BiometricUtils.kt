@@ -52,7 +52,7 @@ suspend fun getEncryptedPrefs(context: Context, activity: FragmentActivity): Sha
         try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .setUserAuthenticationRequired(true, 20) // Require auth every 20 sec
+                .setUserAuthenticationRequired(true, 60) // Require auth every X sec
                 .build()
 
             val prefs = EncryptedSharedPreferences.create(
