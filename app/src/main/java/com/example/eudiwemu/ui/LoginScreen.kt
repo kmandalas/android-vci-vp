@@ -24,8 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
+import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.security.showBiometricPrompt
-import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
 import kotlinx.coroutines.launch
 
@@ -33,8 +33,7 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     activity: FragmentActivity,
     viewModel: AuthenticationViewModel,
-    navController: NavController,
-    issuanceService: IssuanceService
+    navController: NavController
 ) {
     val isAuthenticated by viewModel.isAuthenticated
     val snackbarHostState = remember { SnackbarHostState() }
@@ -79,16 +78,13 @@ fun LoginScreen(
                                     return@launch
                                 }
 
-//                                // Always request a new access token
-//                                val accessToken = issuanceService.obtainAccessToken()
-//
-//                                // Get encrypted preferences and save access token
-//                                val prefs = getEncryptedPrefs(activity.applicationContext, activity)
-//                                prefs.edit()
-//                                    .putString("access_token", accessToken.access_token)
-//                                    .apply()
-//
-//                                viewModel.authenticateSuccess() // Update authentication state
+                                // Get encrypted preferences and save action
+                                val prefs = getEncryptedPrefs(activity.applicationContext, activity)
+                                prefs.edit()
+                                    .putBoolean("device_unlocked", true)
+                                    .apply()
+
+                                viewModel.authenticateSuccess() // Update authentication state
 
                                 // Navigate to WalletApp screen with smooth transition
                                 navController.navigate("wallet_app_screen") {

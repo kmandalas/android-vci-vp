@@ -76,7 +76,22 @@ fun WalletScreen(
 
     // Handle deep links
     LaunchedEffect(intent) {
-        handleDeepLink(context, activity, intent, clientId, requestUri, vpTokenService, selectedClaims, responseUri)
+        handleDeepLink(
+            context = context,
+            activity = activity,
+            intent = intent,
+            clientId = clientId,
+            requestUri = requestUri,
+            issuanceService = issuanceService,
+            vpTokenService = vpTokenService,
+            selectedClaims = selectedClaims,
+            responseUri = responseUri,
+            isLoadingSetter = { isLoading = it },
+            setCredentialClaims = { credentialClaims = it },
+            showSnackbar = { message ->
+                snackbarHostState.showSnackbar(message)
+            }
+        )
     }
 
     Scaffold(
@@ -181,6 +196,131 @@ fun startAuthorizationFlow(activity: FragmentActivity, context: Context) {
     activity.startActivity(intent)
 }
 
+// Function to handle deep link and extract data
+suspend fun handleDeepLink(
+    context: Context,
+    activity: FragmentActivity,
+    intent: Intent?,
+    clientId: MutableState<String>,
+    requestUri: MutableState<String>,
+    issuanceService: IssuanceService,
+    vpTokenService: VpTokenService,
+    selectedClaims: MutableState<List<Disclosure>?>,
+    responseUri: MutableState<String>,
+    isLoadingSetter: (Boolean) -> Unit,
+    setCredentialClaims: (Map<String, String>) -> Unit,
+    showSnackbar: suspend (String) -> Unit
+) {
+    val uri = intent?.data ?: return
+    when (uri.scheme) {
+        "myapp" -> handleOAuthDeepLink(
+            uri, context, activity,
+            issuanceService, isLoadingSetter,
+            setCredentialClaims, showSnackbar
+        )
+
+        "eudi-openid4vp" -> handleVpTokenDeepLink(
+            uri, context, activity,
+            vpTokenService, clientId, requestUri,
+            responseUri, selectedClaims
+        )
+
+        else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
+    }
+}
+
+private suspend fun handleOAuthDeepLink(
+    uri: Uri,
+    context: Context,
+    activity: FragmentActivity,
+    issuanceService: IssuanceService,
+    isLoadingSetter: (Boolean) -> Unit,
+    setCredentialClaims: (Map<String, String>) -> Unit,
+    showSnackbar: suspend (String) -> Unit
+) {
+    val code = uri.getQueryParameter("code") ?: return
+    Log.d("OAuth", "Authorization code: $code")
+
+    val codeVerifier = PkceManager.getCodeVerifier(context)
+    val tokenResult = withContext(Dispatchers.IO) {
+        issuanceService.exchangeAuthorizationCodeForToken(code, codeVerifier)
+    }
+
+    if (tokenResult.isSuccess) {
+        val accessToken = tokenResult.getOrNull()
+        val prefs = getEncryptedPrefs(context, activity)
+        prefs.edit().putString("access_token", accessToken).apply()
+
+        Log.d("OAuth", "Access token saved!")
+
+        // Automatically request VC
+        withContext(Dispatchers.Main) {
+            isLoadingSetter(true)
+        }
+
+        try {
+            val vcResult = requestVC(activity, context, issuanceService)
+            withContext(Dispatchers.Main) {
+                isLoadingSetter(false)
+                if (vcResult.isSuccess) {
+                    val (message, claims) = vcResult.getOrNull()!!
+                    setCredentialClaims(claims)
+                    showSnackbar(message)
+                } else {
+                    showSnackbar("❌ Error: ${vcResult.exceptionOrNull()?.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Error requesting VC after OAuth", e)
+            withContext(Dispatchers.Main) {
+                isLoadingSetter(false)
+                showSnackbar("❌ Error requesting VC: ${e.message}")
+            }
+        }
+    } else {
+        Log.e("OAuth", "Failed to exchange code: ${tokenResult.exceptionOrNull()?.message}")
+    }
+}
+
+private suspend fun handleVpTokenDeepLink(
+    uri: Uri,
+    context: Context,
+    activity: FragmentActivity,
+    vpTokenService: VpTokenService,
+    clientId: MutableState<String>,
+    requestUri: MutableState<String>,
+    responseUri: MutableState<String>,
+    selectedClaims: MutableState<List<Disclosure>?>
+) {
+    val extractedClientId = uri.getQueryParameter("client_id")
+    val extractedRequestUri = uri.getQueryParameter("request_uri")
+
+    extractedClientId?.let { clientId.value = it }
+    extractedRequestUri?.let { requestUri.value = it }
+
+    try {
+        val requestObject = withContext(Dispatchers.IO) {
+            vpTokenService.getRequestObject(extractedRequestUri.orEmpty())
+        }
+
+        responseUri.value = requestObject.response_uri
+
+        val prefs = getEncryptedPrefs(context, activity)
+        val storedCredential = withContext(Dispatchers.IO) {
+            prefs.getString("stored_vc", null).orEmpty()
+        }
+
+        val claims = withContext(Dispatchers.IO) {
+            vpTokenService.extractRequestedClaims(requestObject, storedCredential)
+        }
+
+        withContext(Dispatchers.Main) {
+            selectedClaims.value = claims
+        }
+    } catch (e: Exception) {
+        Log.e("WalletApp", "Error handling VP Token flow", e)
+    }
+}
 
 // Function to handle VC issuance & storage
 suspend fun requestVC(
@@ -216,50 +356,6 @@ suspend fun requestVC(
         Log.e("WalletApp", "Error requesting VC", e)
         // Return failure with the exception message
         Result.failure(e)
-    }
-}
-
-// Function to handle deep link and extract data
-suspend fun handleDeepLink(
-    context: Context,
-    activity: FragmentActivity,
-    intent: Intent?,
-    clientId: MutableState<String>,
-    requestUri: MutableState<String>,
-    vpTokenService: VpTokenService,
-    selectedClaims: MutableState<List<Disclosure>?>, // Store claims for UI
-    responseUri: MutableState<String>,
-) {
-    intent?.data?.let { deepLinkUri ->
-        val extractedClientId = deepLinkUri.getQueryParameter("client_id")
-        val extractedRequestUri = deepLinkUri.getQueryParameter("request_uri")
-
-        extractedClientId?.let { clientId.value = it }
-        extractedRequestUri?.let { requestUri.value = it }
-
-        try {
-            val result = withContext(Dispatchers.IO) {
-                vpTokenService.getRequestObject(extractedRequestUri.orEmpty())
-            }
-            responseUri.value = result.response_uri
-
-            // Fetch encrypted preferences securely
-            val prefs = getEncryptedPrefs(context, activity) // Now a suspend function
-
-            val storedCredential = withContext(Dispatchers.IO) {
-                prefs.getString("stored_vc", null).orEmpty()
-            }
-            val claims = withContext(Dispatchers.IO) {
-                vpTokenService.extractRequestedClaims(result, storedCredential)
-            }
-
-            // Update UI with selected claims
-            withContext(Dispatchers.Main) {
-                selectedClaims.value = claims
-            }
-        } catch (e: Exception) {
-            Log.e("WalletApp", "Error during VP handling", e)
-        }
     }
 }
 
