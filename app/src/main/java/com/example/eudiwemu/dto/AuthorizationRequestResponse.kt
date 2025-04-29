@@ -1,9 +1,9 @@
-package com.example.eudiwemu.model
+package com.example.eudiwemu.dto
 
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class AuthorizationRequest(
+data class AuthorizationRequestResponse(
     val client_id: String? = null,  // Nullable client_id
     val response_uri: String,
     val response_type: String,

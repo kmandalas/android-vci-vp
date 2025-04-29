@@ -92,12 +92,11 @@ class IssuanceService(
             setBody(requestBody)
         }
         val jsonResponse: Map<String, String> = response.body()
-        // todo -> fix error: "kotlinx.coroutines.JobCancellationException: Parent job is Completed;"
-        // verifyCredential(jsonResponse["credential"].orEmpty())
+        verifyCredential(jsonResponse["credential"].orEmpty())
         return jsonResponse["credential"] ?: throw Exception("Failed to request credential")
     }
 
-    private suspend fun verifyCredential(sdJwt: String) {
+     private suspend fun verifyCredential(sdJwt: String) {
         Log.d("WalletApp", "Verifying SD-JWT...")
         if (sdJwt.isEmpty()) throw RuntimeException("No SD-JWT included!")
 
@@ -167,8 +166,6 @@ class IssuanceService(
             JWKSet.parse(jwksJson)
         } catch (e: Exception) {
             throw RuntimeException("Failed to fetch JWK Set: ${e.message}")
-        } finally {
-            client.close()
         }
     }
 

@@ -14,7 +14,7 @@ class AppConfig {
         const val AUTH_SERVER_URL = "https://vc-auth-server.onrender.com/oauth2/token"
         const val ISSUER_URL = "https://vc-issuer.onrender.com"
         const val CLIENT_ID = "wallet-client"
-        const val CLIENT_SECRET = "wallet-secret"
+        const val CLIENT_SECRET = "wallet-secret" // todo
         const val KEY_ALIAS = "wallet-key"
     }
 
