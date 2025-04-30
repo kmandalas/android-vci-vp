@@ -112,7 +112,7 @@ class IssuanceService(
                 "jwt": "$jwtProof"
               }
             }
-        """.trimIndent()
+        """.trimIndent() // todo
 
         val response: HttpResponse = client.post("${AppConfig.ISSUER_URL}/credential") {
             contentType(ContentType.Application.Json)

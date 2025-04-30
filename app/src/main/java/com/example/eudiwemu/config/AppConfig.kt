@@ -1,22 +1,19 @@
 package com.example.eudiwemu.config
 
+import com.example.eudiwemu.BuildConfig
+
 class AppConfig {
 
     companion object {
-        const val AUTH_SERVER_HOST = "192.168.1.65:9000"
-        const val AUTH_SERVER_TOKEN_URL = "http://192.168.1.65:9000/oauth2/token"
-        const val ISSUER_URL = "http://192.168.1.65:8080"
         const val CLIENT_ID = "wallet-client"
         const val CLIENT_SECRET = "wallet-secret"
+        const val SCOPE = "VerifiablePortableDocumentA1"
+        const val REDIRECT_URI = "myapp://callback"
         const val KEY_ALIAS = "wallet-key"
-    }
 
-//    companion object {
-//        const val AUTH_SERVER_URL = "https://vc-auth-server.onrender.com/oauth2/token"
-//        const val ISSUER_URL = "https://vc-issuer.onrender.com"
-//        const val CLIENT_ID = "wallet-client"
-//        const val CLIENT_SECRET = "wallet-secret" // todo
-//        const val KEY_ALIAS = "wallet-key"
-//    }
+        const val AUTH_SERVER_HOST = BuildConfig.AUTH_SERVER_HOST
+        const val AUTH_SERVER_TOKEN_URL: String = BuildConfig.AUTH_SERVER_TOKEN_URL
+        const val ISSUER_URL: String = BuildConfig.ISSUER_URL
+    }
 
 }

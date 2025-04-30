@@ -185,9 +185,9 @@ fun startAuthorizationFlow(activity: FragmentActivity, context: Context) {
         .encodedAuthority(AppConfig.AUTH_SERVER_HOST)
         .path("/oauth2/authorize")
         .appendQueryParameter("response_type", "code")
-        .appendQueryParameter("client_id", "wallet-client")
-        .appendQueryParameter("scope", "VerifiablePortableDocumentA1")
-        .appendQueryParameter("redirect_uri", "myapp://callback")
+        .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+        .appendQueryParameter("scope", AppConfig.SCOPE)
+        .appendQueryParameter("redirect_uri", AppConfig.REDIRECT_URI)
         .appendQueryParameter("code_challenge", codeChallenge)
         .appendQueryParameter("code_challenge_method", "S256")
         .build()
@@ -219,7 +219,7 @@ suspend fun handleDeepLink(
             setCredentialClaims, showSnackbar
         )
 
-        "eudi-openid4vp" -> handleVpTokenDeepLink(
+        "openid4vp" -> handleVpTokenDeepLink(
             uri, context, activity,
             vpTokenService, clientId, requestUri,
             responseUri, selectedClaims
