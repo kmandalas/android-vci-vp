@@ -6,7 +6,6 @@
     <application
         android:name=".WalletApplication"
         android:allowBackup="true"
-        android:networkSecurityConfig="@xml/network_security_config"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -44,5 +43,5 @@
         </activity>
     </application>
 </manifest>
-<!-- Add the following if running all backend services localhost with http -->
+<!-- ⚠️ Add the following if running all backend services localhost with http ⚠️ -->
 <!-- android:networkSecurityConfig="@xml/network_security_config" -->
