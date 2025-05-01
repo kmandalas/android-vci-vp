@@ -13,7 +13,7 @@
 
 3. **Authenticate using biometrics** (or PIN, pattern, passcode).
 
-4. **Select "Request VC"** to obtain a sample SD-JWT VC.
+4. **Select "Request VC"** and follow the Issuer's Authorization Code Flow to obtain a sample SD-JWT VC.
     - The credential is securely stored in **Encrypted Shared Preferences**.
 
 
@@ -27,6 +27,5 @@
 
 ### TODOs
 
-- display more info when selecting claims during VP
-- implement scan QR code for VP
-- handle access_token expiration while app is in-use
+- [ ] implement scan QR code for VP
+- [ ] handle `access_token` expiration while app is in-use
