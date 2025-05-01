@@ -52,6 +52,9 @@ fun WalletScreen(
     val responseUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
     val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
+    val clientName = remember { mutableStateOf("") }
+    val logoUri = remember { mutableStateOf("") }
+    val purpose = remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -85,6 +88,9 @@ fun WalletScreen(
             issuanceService = issuanceService,
             vpTokenService = vpTokenService,
             selectedClaims = selectedClaims,
+            clientName = clientName,
+            logoUri = logoUri,
+            purpose = purpose,
             responseUri = responseUri,
             isLoadingSetter = { isLoading = it },
             setCredentialClaims = { credentialClaims = it },
@@ -165,6 +171,9 @@ fun WalletScreen(
     // Show claim selection dialog when claims are available
     selectedClaims.value?.let { claims ->
         ClaimSelectionDialog(
+            clientName = clientName.value,
+            logoUri = logoUri.value,
+            purpose = purpose.value,
             claims = claims,
             onDismiss = { selectedClaims.value = null },
             onConfirm = { selected ->
@@ -206,6 +215,9 @@ suspend fun handleDeepLink(
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
     selectedClaims: MutableState<List<Disclosure>?>,
+    clientName: MutableState<String>,
+    logoUri: MutableState<String>,
+    purpose: MutableState<String>,
     responseUri: MutableState<String>,
     isLoadingSetter: (Boolean) -> Unit,
     setCredentialClaims: (Map<String, String>) -> Unit,
@@ -222,7 +234,8 @@ suspend fun handleDeepLink(
         "openid4vp" -> handleVpTokenDeepLink(
             uri, context, activity,
             vpTokenService, clientId, requestUri,
-            responseUri, selectedClaims
+            responseUri, selectedClaims,
+            clientName, logoUri, purpose
         )
 
         else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
@@ -290,7 +303,10 @@ private suspend fun handleVpTokenDeepLink(
     clientId: MutableState<String>,
     requestUri: MutableState<String>,
     responseUri: MutableState<String>,
-    selectedClaims: MutableState<List<Disclosure>?>
+    selectedClaims: MutableState<List<Disclosure>?>,
+    clientName: MutableState<String>,
+    logoUri: MutableState<String>,
+    purpose: MutableState<String>,
 ) {
     val extractedClientId = uri.getQueryParameter("client_id")
     val extractedRequestUri = uri.getQueryParameter("request_uri")
@@ -304,6 +320,9 @@ private suspend fun handleVpTokenDeepLink(
         }
 
         responseUri.value = requestObject.response_uri
+        clientName.value = requestObject.client_metadata?.client_name ?: ""
+        logoUri.value = requestObject.client_metadata?.logo_uri ?: ""
+        purpose.value = requestObject.presentation_definition.purpose
 
         val prefs = getEncryptedPrefs(context, activity)
         val storedCredential = withContext(Dispatchers.IO) {

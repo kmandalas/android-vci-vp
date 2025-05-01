@@ -7,8 +7,6 @@ import com.example.eudiwemu.dto.AccessTokenResponse
 import com.example.eudiwemu.dto.NonceResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -28,6 +26,9 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.Date
 
 class IssuanceService(
@@ -153,26 +154,23 @@ class IssuanceService(
     fun decodeCredential(sdJwt: String): Map<String, String> {
         Log.d("WalletApp", "Decoding SD-JWT...")
 
-        val gson = Gson()
-
-        // Step 1: Split SD-JWT into JWT part and disclosures
         val parts = sdJwt.split("~")
         val disclosures = parts.drop(1).filter { it.isNotEmpty() }
 
         Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
 
-        // Step 2: Decode and reveal disclosed claims
         val decodedClaims = mutableMapOf<String, String>()
+        val json = Json { ignoreUnknownKeys = true }
 
         for (disclosure in disclosures) {
             try {
                 val decodedBytes = Base64.decode(disclosure, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
                 val decodedJson = String(decodedBytes)
-                val claimData: List<String> = gson.fromJson(decodedJson, object : TypeToken<List<String>>() {}.type)
+                val claimData = json.parseToJsonElement(decodedJson).jsonArray
 
                 if (claimData.size >= 3) {
-                    val claimName = claimData[1]
-                    val claimValue = claimData[2]
+                    val claimName = claimData[1].jsonPrimitive.content
+                    val claimValue = claimData[2].jsonPrimitive.content
                     decodedClaims[claimName] = claimValue
                     Log.d("WalletApp", "Decoded Claim: $claimName -> $claimValue")
                 } else {
@@ -185,6 +183,7 @@ class IssuanceService(
 
         return decodedClaims
     }
+
 
     // Helper function to fetch issuer's JWK Set
     private suspend fun fetchIssuerJWKSet(jwksUrl: String): JWKSet {

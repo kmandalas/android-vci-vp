@@ -5,6 +5,7 @@ import com.authlete.sd.Disclosure
 import com.authlete.sd.SDJWT
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
+import com.example.eudiwemu.dto.Field
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
 import com.nimbusds.jose.JOSEException
@@ -54,47 +55,48 @@ class VpTokenService(
         }
     }
 
-    fun extractRequestedClaims(requestObject: AuthorizationRequestResponse, storedCredential: String): List<Disclosure> {
-        try {
-            // Extract requested claim paths
-            val requestedClaimPaths = extractRequestedClaimPaths(requestObject)
-            println("Extracted Claim Paths: $requestedClaimPaths")
+    fun extractRequestedClaims(
+        request: AuthorizationRequestResponse,
+        storedCredential: String
+    ): List<Disclosure> {
+        val jwtPart = storedCredential.substringBefore("~")
+        val signedJwt = SignedJWT.parse(jwtPart)
+        val existingVct = signedJwt.jwtClaimsSet.getStringClaim("vct")
 
-            // Parse the stored SD-JWT to get disclosures
-            val allDisclosures = parseSDJWT(storedCredential)
+        val allFields = request.presentation_definition.input_descriptors
+            .flatMap { it.constraints.fields }
 
-            // Filter disclosures based on requested claim paths
-            return allDisclosures.filter { disclosure ->
-                requestedClaimPaths.any { path -> path.contains(disclosure.claimName) }
-            }
-        } catch (e: Exception) {
-            throw RuntimeException("Error extracting requested disclosures: ${e.message}", e)
+        val requestedVct = allFields
+            .firstOrNull { it.path.contains("$.vct") }
+            ?.filter?.const
+
+        checkVctMatch(existingVct, requestedVct)
+
+        val requestedClaimPaths = extractClaimPaths(allFields)
+        val allDisclosures = parseSDJWT(storedCredential)
+
+        return allDisclosures.filter { disclosure ->
+            requestedClaimPaths.any { path -> path.contains(disclosure.claimName) }
         }
     }
 
-    private fun extractRequestedClaimPaths(requestObject: AuthorizationRequestResponse): List<String> {
-        return try {
-            requestObject.presentation_definition.input_descriptors
-                .flatMap { it.constraints.fields }
-                .mapNotNull { field ->
-                    field.path.firstOrNull()?.replace("$.","") // Extract first path element
-                }
-        } catch (e: Exception) {
-            throw RuntimeException("Error extracting claim paths: ${e.message}", e)
+    private fun extractClaimPaths(fields: List<Field>): List<String> =
+        fields.mapNotNull { it.path.firstOrNull()?.removePrefix("$.") }
+
+    private fun checkVctMatch(actual: String?, expected: String?) {
+        if (actual != expected) {
+            throw IllegalArgumentException("❌ VCT mismatch: expected '$expected', but found '$actual'.")
         }
     }
 
     private fun parseSDJWT(storedCredential: String): List<Disclosure> {
-        try {
-            // Parse the SD-JWT to get the disclosures
-            val sdJwt = SDJWT.parse(storedCredential)
-
-            // Return the disclosures as a list
-            return sdJwt.disclosures
+        return try {
+            SDJWT.parse(storedCredential).disclosures
         } catch (e: Exception) {
             throw RuntimeException("Error parsing SD-JWT: ${e.message}", e)
         }
     }
+
 
     // Function to create Verifiable Presentation (VP)
     fun createVP(credential: String, disclosures: List<Disclosure> = listOf()): SDJWT {
@@ -148,7 +150,7 @@ class VpTokenService(
         // Create the header for the binding JWT
         return JWSHeader.Builder(alg)
             .keyID(kid)
-            .type(JOSEObjectType("kb+jwt"))
+            .type(JOSEObjectType("kb+jwt")) // see verifyBindingJwt on server-side
             .build()
     }
 
