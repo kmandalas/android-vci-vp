@@ -5,20 +5,20 @@
 ### SD-JWT Issuance (VCI)
 
 1. **"Spin up" the backend services**:
-   - **Auth Server:**  
-     [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server)
-   - **Issuer:**  
-     [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer)
-   - **Verifier:**  
-     [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier)
+    - **Auth Server:**  
+      [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server)
+    - **Issuer:**  
+      [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer)
+    - **Verifier:**  
+      [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier)
 
 2. **Build and run the app.**
 
 3. **Authenticate using biometrics** (or PIN, pattern, passcode).  
    _There are 3 available test users:_
-   - `testuser1 / pass1`
-   - `testuser2 / pass2`
-   - `testuser3 / pass3`
+    - 🇬🇷 `testuser1 / pass1`
+    - 🇷🇴 `testuser2 / pass2`
+    - 🇧🇬 `testuser3 / pass3`
 
 4. **Select "Request VC"** and follow the Issuer's Authorization Code Flow to obtain a sample SD-JWT VC.  
    _The credential is securely stored in **Encrypted Shared Preferences**._
