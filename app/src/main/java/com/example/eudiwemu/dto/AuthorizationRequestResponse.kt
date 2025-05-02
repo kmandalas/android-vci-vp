@@ -22,6 +22,7 @@ data class ClientMetadata(
 @Serializable
 data class PresentationDefinition(
     val id: String,
+    val name: String,
     val purpose: String,
     val input_descriptors: List<InputDescriptor>
 )

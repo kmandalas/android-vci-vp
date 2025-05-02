@@ -25,12 +25,9 @@ android {
         debug {
             isMinifyEnabled = false
             // ⚠️ Modify these for localhost development:
-            // buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.1.65:9000\"")
-            // buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.1.65:9000/oauth2/token\"")
-            // buildConfigField("String", "ISSUER_URL", "\"http://192.168.1.65:8080\"")
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.1.65:9000\"")
+             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.1.65:9000/oauth2/token\"")
+             buildConfigField("String", "ISSUER_URL", "\"http://192.168.1.65:8080\"")
         }
         release {
             isMinifyEnabled = false
@@ -101,7 +98,7 @@ dependencies {
     implementation("com.authlete:sd-jwt:1.5")
 
     // Other
-    implementation ("com.google.code.gson:gson:2.8.8")
     implementation ("io.insert-koin:koin-android:3.5.0")
     implementation ("androidx.navigation:navigation-compose:2.4.0-alpha10")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }

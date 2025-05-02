@@ -107,13 +107,13 @@ class IssuanceService(
         val requestBody = """
             {
               "format": "vc+sd-jwt",
-              "credentialConfigurationId": "IdentityCredential",
+              "credentialConfigurationId": "${AppConfig.SCOPE}",
               "proof": {
                 "proofType": "jwt",
                 "jwt": "$jwtProof"
               }
             }
-        """.trimIndent() // todo
+        """.trimIndent()
 
         val response: HttpResponse = client.post("${AppConfig.ISSUER_URL}/credential") {
             contentType(ContentType.Application.Json)

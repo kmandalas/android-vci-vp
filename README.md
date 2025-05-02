@@ -4,17 +4,18 @@
 
 ### SD-JWT Issuance (VCI)
 
-1. **"Warm up" backend services** (if inactive) by hitting the following URLs:
-    - **Auth Server:** [https://vc-auth-server.onrender.com/.well-known/openid-configuration](https://vc-auth-server.onrender.com/.well-known/openid-configuration)
-    - **Issuer:** [https://vc-issuer.onrender.com/.well-known/openid-credential-issuer](https://vc-issuer.onrender.com/.well-known/openid-credential-issuer)
-    - **Verifier:** [https://vp-verifier.onrender.com/verifier/invoke-wallet](https://vp-verifier.onrender.com/verifier/invoke-wallet)
+1. **"Spin up" the backend services**:
+    - **Auth Server:** [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/auth-server)
+    - **Issuer:** [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/issuer)
+    - **Verifier:** [https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier](https://github.com/kmandalas/spring-boot-vci-vp/tree/main/verifier)
 
 2. **Build and run the app.**
 
-3. **Authenticate using biometrics** (or PIN, pattern, passcode).
+3. **Authenticate using biometrics** (or PIN, pattern, passcode). 
+- There are 3 available test users: testuser1/pass1, testuser2/pass2 & testuser3/pass3
 
 4. **Select "Request VC"** and follow the Issuer's Authorization Code Flow to obtain a sample SD-JWT VC.
-    - The credential is securely stored in **Encrypted Shared Preferences**.
+- The credential is securely stored in **Encrypted Shared Preferences**.
 
 
 ### Data-sharing (VP)
@@ -27,5 +28,5 @@
 
 ### TODOs
 
-- [ ] implement scan QR code for VP
+- [ ] implement scan QR code for VP (Cross-device flow)
 - [ ] handle `access_token` expiration while app is in-use

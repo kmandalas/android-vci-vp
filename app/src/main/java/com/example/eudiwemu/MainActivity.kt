@@ -19,6 +19,7 @@ import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
+import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
 import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -42,16 +43,20 @@ class MainActivity : FragmentActivity() {
                 Log.e("MainActivity", "Failed to get encrypted prefs or authenticate", e)
                 isAuthenticated.value = false
             }
-
-            // Set the content after authentication check
             setContent {
-                MainNavHost(
-                    activity = this@MainActivity,
-                    intent = intent,
-                    issuanceService = issuanceService,
-                    vpTokenService = vpTokenService,
-                    isAuthenticated = isAuthenticated.value,
-                )
+                EUDIWEMUTheme(
+                    darkTheme = false,
+                    dynamicColor = false
+                ) {
+                    // Set the content after authentication check
+                    MainNavHost(
+                        activity = this@MainActivity,
+                        intent = intent,
+                        issuanceService = issuanceService,
+                        vpTokenService = vpTokenService,
+                        isAuthenticated = isAuthenticated.value,
+                    )
+                }
             }
         }
     }
