@@ -19,11 +19,10 @@ import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
+import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
 import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
-import com.nimbusds.jwt.JWTParser
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
-import java.time.Instant
 
 class MainActivity : FragmentActivity() {
     private val issuanceService: IssuanceService by inject()
@@ -37,43 +36,30 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             try {
                 val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
-                val accessTokenString = prefs.getString("access_token", null)
+                val deviceUnlocked = prefs.getBoolean("device_unlocked", false)
 
-                val isValid = accessTokenString?.let { token ->
-                    try {
-                        val jwt = JWTParser.parse(token)
-                        jwt.jwtClaimsSet.expirationTime?.toInstant()?.isAfter(Instant.now()) == true
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Error decoding JWT or accessing claims", e)
-                        false
-                    }
-                } ?: false
-
-                if (isValid) {
-                    isAuthenticated.value = true
-                } else {
-                    isAuthenticated.value = false
-                    prefs.edit().remove("access_token").apply()
-                    Log.d("MainActivity", "Access token is invalid or expired.")
-                }
+                isAuthenticated.value = deviceUnlocked
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to get encrypted prefs or authenticate", e)
                 isAuthenticated.value = false
             }
-
-            // Set the content after authentication check
             setContent {
-                MainNavHost(
-                    activity = this@MainActivity,
-                    intent = intent,
-                    issuanceService = issuanceService,
-                    vpTokenService = vpTokenService,
-                    isAuthenticated = isAuthenticated.value,
-                )
+                EUDIWEMUTheme(
+                    darkTheme = false,
+                    dynamicColor = false
+                ) {
+                    // Set the content after authentication check
+                    MainNavHost(
+                        activity = this@MainActivity,
+                        intent = intent,
+                        issuanceService = issuanceService,
+                        vpTokenService = vpTokenService,
+                        isAuthenticated = isAuthenticated.value,
+                    )
+                }
             }
         }
     }
-
 }
 
 @Composable
@@ -95,8 +81,7 @@ fun MainNavHost(
             LoginScreen(
                 activity = activity,
                 viewModel = viewModel,
-                navController = navController,
-                issuanceService = issuanceService
+                navController = navController
             )
         }
         composable("wallet_app_screen") {
