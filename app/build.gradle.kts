@@ -35,9 +35,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.kmandalas.com\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.kmandalas.com/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.kmandalas.com\"")
         }
     }
     compileOptions {
