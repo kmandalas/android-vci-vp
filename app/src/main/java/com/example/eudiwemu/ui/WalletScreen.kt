@@ -4,14 +4,22 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +66,10 @@ fun WalletScreen(
     var isLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf("VerifiablePortableDocumentA1")
+    var selectedOption by remember { mutableStateOf("") }
 
     // Load stored credential on launch
     LaunchedEffect(Unit) {
@@ -112,55 +124,66 @@ fun WalletScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Dropdown Menu
+                Box {
+                    OutlinedTextField(
+                        value = selectedOption,
+                        onValueChange = {},
+                        label = { Text("Select VC Type") },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(
+                                Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.clickable { expanded = true }
+                            )
+                        },
+                        modifier = Modifier
+                            .clickable { expanded = true }
+                            .fillMaxWidth(0.8f)
+                    )
+
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        options.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    selectedOption = option
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 if (isLoading) {
                     CircularProgressIndicator()
                 } else {
-                    Button(onClick = {
-                        // Set isLoading to true as soon as the button is clicked
-                        isLoading = true
-
-                        // Start a coroutine to call the suspend function requestVC
-                        coroutineScope.launch {
-                            try {
-                                val prefs = getEncryptedPrefs(context, activity)
-                                val accessToken = prefs.getString("access_token", null)
-
-                                if (accessToken.isNullOrEmpty()) {
-                                    // No access token => need to start OAuth Authorization
-                                    startAuthorizationFlow(activity, context)
-                                    isLoading = false // Stop loading spinner until user comes back
-                                } else {
-                                    // Already have token => can request VC
-                                    val result = requestVC(activity, context, issuanceService)
-
-                                    isLoading = false
-                                    if (result.isSuccess) {
-                                        val (message, claims) = result.getOrNull()!!
-                                        credentialClaims = claims
-                                        snackbarHostState.showSnackbar(message)
-                                    } else {
-                                        snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
-                                    }
-                                }
-
-                            } catch (e: Exception) {
-                                Log.e("WalletApp", "Error requesting VC", e)
-                                // Set isLoading to false in case of exception
-                                isLoading = false
-                                // Show generic error message in snackbar
-                                snackbarHostState.showSnackbar(
-                                    message = "❌ Error requesting VC: ${e.message}",
-                                    actionLabel = "Dismiss",
-                                    duration = SnackbarDuration.Long
+                    Button(
+                        onClick = {
+                            isLoading = true
+                            coroutineScope.launch {
+                                requestCredential(
+                                    context = context,
+                                    activity = activity,
+                                    issuanceService = issuanceService,
+                                    snackbarHostState = snackbarHostState,
+                                    onLoadingChanged = { isLoading = it },
+                                    onSuccess = { claims -> credentialClaims = claims }
                                 )
                             }
-                        }
-                    }) {
+                        },
+                        enabled = selectedOption == "VerifiablePortableDocumentA1"
+                    ) {
                         Text("Request VC")
                     }
                 }
 
-                // Show the CredentialCard immediately after claims are fetched
                 credentialClaims?.let {
                     CredentialCard(it)
                 }
@@ -204,6 +227,45 @@ fun startAuthorizationFlow(activity: FragmentActivity, context: Context) {
     val intent = Intent(Intent.ACTION_VIEW, authorizationUri)
     activity.startActivity(intent)
 }
+
+suspend fun requestCredential(
+    context: Context,
+    activity: FragmentActivity,
+    issuanceService: IssuanceService,
+    snackbarHostState: SnackbarHostState,
+    onLoadingChanged: (Boolean) -> Unit,
+    onSuccess: (Map<String, String>) -> Unit
+) {
+    try {
+        val prefs = getEncryptedPrefs(context, activity)
+        val accessToken = prefs.getString("access_token", null)
+
+        if (accessToken.isNullOrEmpty()) {
+            startAuthorizationFlow(activity, context)
+            onLoadingChanged(false)
+        } else {
+            val result = submitCredentialRequest(activity, context, issuanceService)
+
+            onLoadingChanged(false)
+            if (result.isSuccess) {
+                val (message, claims) = result.getOrNull()!!
+                onSuccess(claims)
+                snackbarHostState.showSnackbar(message)
+            } else {
+                snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("WalletApp", "Error requesting VC", e)
+        onLoadingChanged(false)
+        snackbarHostState.showSnackbar(
+            message = "❌ Error requesting VC: ${e.message}",
+            actionLabel = "Dismiss",
+            duration = SnackbarDuration.Long
+        )
+    }
+}
+
 
 // Function to handle deep link and extract data
 suspend fun handleDeepLink(
@@ -272,7 +334,7 @@ private suspend fun handleOAuthDeepLink(
         }
 
         try {
-            val vcResult = requestVC(activity, context, issuanceService)
+            val vcResult = submitCredentialRequest(activity, context, issuanceService)
             withContext(Dispatchers.Main) {
                 isLoadingSetter(false)
                 if (vcResult.isSuccess) {
@@ -342,7 +404,7 @@ private suspend fun handleVpTokenDeepLink(
 }
 
 // Function to handle VC issuance & storage
-suspend fun requestVC(
+suspend fun submitCredentialRequest(
     activity: FragmentActivity,
     context: Context,
     issuanceService: IssuanceService
