@@ -39,7 +39,7 @@
 
 ### Demo Video
 
-_📺 You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/RfefiWf3iFI).
+_📺 You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/cxIgyTR8s6w).
 
 
 ### TODOs
