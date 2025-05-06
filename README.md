@@ -46,3 +46,11 @@ _📺 You can watch a screen recording that walks through the entire flow on [Yo
 
 - [ ] implement scan QR code for VP (Cross-device flow)
 - [ ] handle `access_token` expiration while app is in-use
+
+---
+<details>
+<summary>⚠️ Disclaimer</summary>
+
+This repo contains an **experimental project** created for learning and demonstration purposes. The implementation is **not intended for production** use.
+
+</details>
