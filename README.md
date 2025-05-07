@@ -1,4 +1,4 @@
-# Android SD-JWT VCI/VP Demo
+# Android SD-JWT & VCI/VP Demo
 Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup.
 Full related article [here](https://dzone.com/articles/verifiable-credentials-spring-boot-android)
 
