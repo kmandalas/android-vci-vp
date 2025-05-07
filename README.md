@@ -21,8 +21,8 @@
    - 🇬🇷 `testuser1 / pass1`
    - 🇷🇴 `testuser2 / pass2`
    - 🇧🇬 `testuser3 / pass3`
-   
-   _The credential is securely stored in **Encrypted Shared Preferences**._
+
+   🔒 _The credential is securely stored in **Encrypted Shared Preferences**._
 
 ---
 
