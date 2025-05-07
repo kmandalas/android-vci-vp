@@ -14,13 +14,14 @@
 
 2. **Build and run the app.**
 
-3. **Authenticate using biometrics** (or PIN, pattern, passcode).  
-   _There are 3 available test users:_
-    - 🇬🇷 `testuser1 / pass1`
-    - 🇷🇴 `testuser2 / pass2`
-    - 🇧🇬 `testuser3 / pass3`
+3. **Authenticate using biometrics** (or PIN, pattern, passcode).
 
-4. **Select "Request VC"** and follow the Issuer's Authorization Code Flow to obtain a sample SD-JWT VC.  
+4. **Select "Request VC"** and follow the Issuer's Authorization Code Flow to obtain a sample SD-JWT VC.
+   _There are 3 available test users:_
+   - 🇬🇷 `testuser1 / pass1`
+   - 🇷🇴 `testuser2 / pass2`
+   - 🇧🇬 `testuser3 / pass3`
+   
    _The credential is securely stored in **Encrypted Shared Preferences**._
 
 ---
