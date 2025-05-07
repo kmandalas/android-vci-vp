@@ -44,8 +44,11 @@ _📺 You can watch a screen recording that walks through the entire flow on [Yo
 
 ### TODOs
 
-- [ ] implement scan QR code for VP (Cross-device flow)
 - [ ] handle `access_token` expiration while app is in-use
+- [ ] implement scan QR code for VP and the "Cross-device" flow in general
+- [ ] incorporate [EUDI Presentation Exchange v2 library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-presentation-exchange-kt)
+- [ ] incorporate [EUDI SD-JWT library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-sdjwt-kt)
+- [ ] incorporate [EUDI OpenId4VCI library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-openid4vci-kt)
 
 ---
 <details>
