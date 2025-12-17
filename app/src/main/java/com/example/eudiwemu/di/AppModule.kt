@@ -3,6 +3,7 @@ package com.example.eudiwemu.di
 import com.example.eudiwemu.security.WalletKeyManager
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
+import com.example.eudiwemu.service.WuaIssuanceService
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -15,7 +16,10 @@ val appModule = module {
     single {
         HttpClient(CIO) {
             install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
+                json(Json {
+                    ignoreUnknownKeys = true
+                    encodeDefaults = true
+                })
             }
         }
     }
@@ -27,4 +31,5 @@ val appModule = module {
     // Inject dependencies into services
     single { IssuanceService(get(), get()) }
     single { VpTokenService(get(), get()) }
+    single { WuaIssuanceService(get(), get()) }
 }

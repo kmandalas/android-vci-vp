@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
+import com.example.eudiwemu.service.WuaIssuanceService
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
 import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
@@ -27,6 +28,7 @@ import org.koin.android.ext.android.inject
 class MainActivity : FragmentActivity() {
     private val issuanceService: IssuanceService by inject()
     private val vpTokenService: VpTokenService by inject()
+    private val wuaIssuanceService: WuaIssuanceService by inject()
 
     private val isAuthenticated = mutableStateOf(false)
 
@@ -40,7 +42,16 @@ class MainActivity : FragmentActivity() {
 
                 isAuthenticated.value = deviceUnlocked
             } catch (e: Exception) {
-                Log.e("MainActivity", "Failed to get encrypted prefs or authenticate", e)
+                // KeyStoreException with "unusable" master key is expected when
+                // auth timeout expires - Tink will retry after biometric prompt
+                val isExpectedAuthTimeout = e is java.security.KeyStoreException &&
+                    e.message?.contains("unusable") == true
+
+                if (isExpectedAuthTimeout) {
+                    Log.d("MainActivity", "Master key requires re-authentication, biometric prompt will appear")
+                } else {
+                    Log.e("MainActivity", "Failed to get encrypted prefs", e)
+                }
                 isAuthenticated.value = false
             }
             setContent {
@@ -54,6 +65,7 @@ class MainActivity : FragmentActivity() {
                         intent = intent,
                         issuanceService = issuanceService,
                         vpTokenService = vpTokenService,
+                        wuaIssuanceService = wuaIssuanceService,
                         isAuthenticated = isAuthenticated.value,
                     )
                 }
@@ -68,6 +80,7 @@ fun MainNavHost(
     intent: Intent?,
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
+    wuaIssuanceService: WuaIssuanceService,
     isAuthenticated: Boolean
 ) {
     val navController = rememberNavController()
@@ -77,11 +90,12 @@ fun MainNavHost(
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable("login_screen") {
-            val viewModel: AuthenticationViewModel = viewModel() // Use the viewModel() function
+            val viewModel: AuthenticationViewModel = viewModel()
             LoginScreen(
                 activity = activity,
                 viewModel = viewModel,
-                navController = navController
+                navController = navController,
+                wuaIssuanceService = wuaIssuanceService
             )
         }
         composable("wallet_app_screen") {
@@ -90,7 +104,8 @@ fun MainNavHost(
                 intent = intent,
                 context = LocalContext.current,
                 issuanceService = issuanceService,
-                vpTokenService = vpTokenService
+                vpTokenService = vpTokenService,
+                wuaIssuanceService = wuaIssuanceService
             )
         }
     }

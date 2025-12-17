@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
@@ -43,6 +45,7 @@ import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
+import com.example.eudiwemu.service.WuaIssuanceService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,12 +56,14 @@ fun WalletScreen(
     context: Context,
     intent: Intent?,
     issuanceService: IssuanceService,
-    vpTokenService: VpTokenService
+    vpTokenService: VpTokenService,
+    wuaIssuanceService: WuaIssuanceService
 ) {
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
     val responseUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
+    var wuaInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
     val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
     val clientName = remember { mutableStateOf("") }
     val logoUri = remember { mutableStateOf("") }
@@ -71,12 +76,23 @@ fun WalletScreen(
     val options = listOf("VerifiablePortableDocumentA1")
     var selectedOption by remember { mutableStateOf("") }
 
-    // Load stored credential on launch
+    // Load stored credential and WUA on launch
     LaunchedEffect(Unit) {
         try {
             val prefs = getEncryptedPrefs(context, activity)
-            val storedCredential = prefs.getString("stored_vc", null)
 
+            // Load WUA
+            val storedWua = prefs.getString("stored_wua", null)
+            if (!storedWua.isNullOrEmpty()) {
+                try {
+                    wuaInfo = wuaIssuanceService.decodeWuaCredential(storedWua)
+                } catch (e: Exception) {
+                    Log.e("WalletApp", "Error decoding stored WUA", e)
+                }
+            }
+
+            // Load VC
+            val storedCredential = prefs.getString("stored_vc", null)
             if (!storedCredential.isNullOrEmpty()) {
                 try {
                     credentialClaims = issuanceService.decodeCredential(storedCredential)
@@ -119,10 +135,20 @@ fun WalletScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.TopCenter
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // WUA Status Card (shown at top if available)
+                wuaInfo?.let {
+                    WuaStatusCard(it)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Dropdown Menu
                 Box {
@@ -187,6 +213,8 @@ fun WalletScreen(
                 credentialClaims?.let {
                     CredentialCard(it)
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

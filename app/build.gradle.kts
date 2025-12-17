@@ -25,9 +25,10 @@ android {
         debug {
             isMinifyEnabled = false
             // ⚠️ Modify these for localhost development:
-             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.1.65:9000\"")
-             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.1.65:9000/oauth2/token\"")
-             buildConfigField("String", "ISSUER_URL", "\"http://192.168.1.65:8080\"")
+             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.1.67:9000\"")
+             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.1.67:9000/oauth2/token\"")
+             buildConfigField("String", "ISSUER_URL", "\"http://192.168.1.67:8080\"")
+             buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://192.168.1.67:9001/wp\"")
         }
         release {
             isMinifyEnabled = false
@@ -35,9 +36,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.kmandalas.com\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.kmandalas.com/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.kmandalas.com\"")
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
         }
     }
     compileOptions {
