@@ -1,19 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Exclude EncryptedSharedPreferences - keys don't transfer between devices -->
+        <exclude domain="sharedpref" path="wallet_prefs.xml"/>
+        <!-- Also exclude the Tink keyset preferences -->
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- Also exclude from device-to-device transfer -->
+        <exclude domain="sharedpref" path="wallet_prefs.xml"/>
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>
