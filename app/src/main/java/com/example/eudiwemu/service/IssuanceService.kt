@@ -6,6 +6,7 @@ import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
 import com.example.eudiwemu.dto.NonceResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
+import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -17,9 +18,9 @@ import com.nimbusds.jwt.SignedJWT
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.basicAuth
-import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -35,6 +36,7 @@ class IssuanceService(
     private val client: HttpClient,
     private val walletKeyManager: WalletKeyManager
 ) {
+    private val dpopManager = DPoPManager(walletKeyManager)
 
     @Deprecated("replaced client_credentials with authorization_code flow")
     suspend fun obtainAccessToken(): AccessTokenResponse {
@@ -53,19 +55,28 @@ class IssuanceService(
         redirectUri: String = "myapp://callback"
     ): Result<String> {
         return try {
+            val tokenUrl = AppConfig.AUTH_SERVER_TOKEN_URL
+
+            val dpopProof = dpopManager.createDPoPProof(
+                httpMethod = "POST",
+                httpUri = tokenUrl
+            )
+
             val response = client.submitForm(
-                url = AppConfig.AUTH_SERVER_TOKEN_URL,
+                url = tokenUrl,
                 formParameters = Parameters.build {
                     append("grant_type", "authorization_code")
                     append("code", code)
                     append("redirect_uri", redirectUri)
                     append("code_verifier", codeVerifier)
+                    append("client_id", AppConfig.CLIENT_ID)
                 }
             ) {
-                basicAuth(AppConfig.CLIENT_ID, AppConfig.CLIENT_SECRET)
+                header("DPoP", dpopProof)
             }
 
             val accessTokenResponse = response.body<AccessTokenResponse>()
+            Log.d("IssuanceService", "Token type: ${accessTokenResponse.token_type}")
             Result.success(accessTokenResponse.access_token)
         } catch (e: Exception) {
             Result.failure(e)
@@ -73,8 +84,17 @@ class IssuanceService(
     }
 
     suspend fun getNonce(accessToken: String): String {
-        val response: NonceResponse = client.get("${AppConfig.ISSUER_URL}/credential/nonce") {
-            bearerAuth(accessToken)
+        val nonceUrl = "${AppConfig.ISSUER_URL}/credential/nonce"
+
+        val dpopProof = dpopManager.createDPoPProof(
+            httpMethod = "GET",
+            httpUri = nonceUrl,
+            accessTokenHash = dpopManager.computeAccessTokenHash(accessToken)
+        )
+
+        val response: NonceResponse = client.get(nonceUrl) {
+            header("Authorization", "DPoP $accessToken")
+            header("DPoP", dpopProof)
         }.body()
 
         return response.c_nonce
@@ -104,6 +124,14 @@ class IssuanceService(
     }
 
     suspend fun requestCredential(accessToken: String, jwtProof: String): String {
+        val credentialUrl = "${AppConfig.ISSUER_URL}/credential"
+
+        val dpopProof = dpopManager.createDPoPProof(
+            httpMethod = "POST",
+            httpUri = credentialUrl,
+            accessTokenHash = dpopManager.computeAccessTokenHash(accessToken)
+        )
+
         val requestBody = """
             {
               "format": "vc+sd-jwt",
@@ -115,9 +143,10 @@ class IssuanceService(
             }
         """.trimIndent()
 
-        val response: HttpResponse = client.post("${AppConfig.ISSUER_URL}/credential") {
+        val response: HttpResponse = client.post(credentialUrl) {
             contentType(ContentType.Application.Json)
-            bearerAuth(accessToken)
+            header("Authorization", "DPoP $accessToken")
+            header("DPoP", dpopProof)
             setBody(requestBody)
         }
         val jsonResponse: Map<String, String> = response.body()
