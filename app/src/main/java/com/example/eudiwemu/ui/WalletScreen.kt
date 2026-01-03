@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.authlete.sd.Disclosure
 import com.example.eudiwemu.config.AppConfig
+import com.example.eudiwemu.dto.AuthorizationRequestResponse
 import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
@@ -46,6 +47,7 @@ import com.example.eudiwemu.service.VpTokenService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 @Composable
 fun WalletScreen(
@@ -63,6 +65,8 @@ fun WalletScreen(
     val clientName = remember { mutableStateOf("") }
     val logoUri = remember { mutableStateOf("") }
     val purpose = remember { mutableStateOf("") }
+    val nonce = remember { mutableStateOf("") }
+    val authRequest = remember { mutableStateOf<AuthorizationRequestResponse?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -103,6 +107,8 @@ fun WalletScreen(
             clientName = clientName,
             logoUri = logoUri,
             purpose = purpose,
+            nonce = nonce,
+            authRequest = authRequest,
             responseUri = responseUri,
             isLoadingSetter = { isLoading = it },
             setCredentialClaims = { credentialClaims = it },
@@ -201,7 +207,11 @@ fun WalletScreen(
             onDismiss = { selectedClaims.value = null },
             onConfirm = { selected ->
                 coroutineScope.launch {
-                    submitVpToken(context, activity, vpTokenService, selected, responseUri.value, snackbarHostState)
+                    submitVpToken(
+                        context, activity, vpTokenService, selected,
+                        responseUri.value, clientId.value, nonce.value,
+                        authRequest.value, snackbarHostState
+                    )
                 }
                 selectedClaims.value = null // Dismiss dialog after confirming selection
             }
@@ -280,6 +290,8 @@ suspend fun handleDeepLink(
     clientName: MutableState<String>,
     logoUri: MutableState<String>,
     purpose: MutableState<String>,
+    nonce: MutableState<String>,
+    authRequest: MutableState<AuthorizationRequestResponse?>,
     responseUri: MutableState<String>,
     isLoadingSetter: (Boolean) -> Unit,
     setCredentialClaims: (Map<String, String>) -> Unit,
@@ -293,11 +305,11 @@ suspend fun handleDeepLink(
             setCredentialClaims, showSnackbar
         )
 
-        "openid4vp" -> handleVpTokenDeepLink(
+        "openid4vp", "haip-vp" -> handleVpTokenDeepLink(
             uri, context, activity,
             vpTokenService, clientId, requestUri,
             responseUri, selectedClaims,
-            clientName, logoUri, purpose
+            clientName, logoUri, purpose, nonce, authRequest
         )
 
         else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
@@ -369,6 +381,8 @@ private suspend fun handleVpTokenDeepLink(
     clientName: MutableState<String>,
     logoUri: MutableState<String>,
     purpose: MutableState<String>,
+    nonce: MutableState<String>,
+    authRequest: MutableState<AuthorizationRequestResponse?>,
 ) {
     val extractedClientId = uri.getQueryParameter("client_id")
     val extractedRequestUri = uri.getQueryParameter("request_uri")
@@ -378,13 +392,21 @@ private suspend fun handleVpTokenDeepLink(
 
     try {
         val requestObject = withContext(Dispatchers.IO) {
-            vpTokenService.getRequestObject(extractedRequestUri.orEmpty())
+            vpTokenService.getRequestObject(
+                extractedRequestUri.orEmpty(),
+                extractedClientId.orEmpty()
+            )
         }
 
         responseUri.value = requestObject.response_uri
         clientName.value = requestObject.client_metadata?.client_name ?: ""
         logoUri.value = requestObject.client_metadata?.logo_uri ?: ""
-        purpose.value = requestObject.presentation_definition.purpose
+        purpose.value = requestObject.client_metadata?.purpose ?: "Credential verification request"
+        // Store client_id and nonce for VP creation
+        clientId.value = requestObject.client_id ?: extractedClientId ?: ""
+        nonce.value = requestObject.nonce
+        // Store the full request for encryption parameters
+        authRequest.value = requestObject
 
         val prefs = getEncryptedPrefs(context, activity)
         val storedCredential = withContext(Dispatchers.IO) {
@@ -447,29 +469,60 @@ suspend fun submitVpToken(
     vpTokenService: VpTokenService,
     selectedClaims: List<Disclosure>,
     responseUri: String,
+    clientId: String,
+    nonce: String,
+    authRequest: AuthorizationRequestResponse?,
     snackbarHostState: SnackbarHostState
 ) {
     try {
-        val prefs = getEncryptedPrefs(context, activity) // Now a suspend function
+        val prefs = getEncryptedPrefs(context, activity)
 
         val storedCredential = withContext(Dispatchers.IO) {
             prefs.getString("stored_vc", null).orEmpty()
         }
         val vpToken = withContext(Dispatchers.IO) {
-            vpTokenService.createVP(storedCredential, selectedClaims)
+            vpTokenService.createVP(storedCredential, selectedClaims, clientId, nonce)
         }
 
         val serverResponse = withContext(Dispatchers.IO) {
-            vpTokenService.sendVpTokenToVerifier(vpToken.toString(), responseUri)
+            if (authRequest != null) {
+                vpTokenService.sendVpTokenToVerifier(vpToken.toString(), responseUri, authRequest)
+            } else {
+                throw IllegalStateException("Authorization request is required")
+            }
         }
 
-        // Show server response in Snackbar
+        // Handle verifier response
         withContext(Dispatchers.Main) {
-            snackbarHostState.showSnackbar(
-                message = "Verifier Response: $serverResponse",
-                actionLabel = "Dismiss",
-                duration = SnackbarDuration.Long
-            )
+            try {
+                val jsonResponse = JSONObject(serverResponse)
+                val redirectUri = jsonResponse.optString("redirect_uri", null)
+
+                if (!redirectUri.isNullOrEmpty()) {
+                    // Open redirect_uri in browser (EU verifier flow)
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(redirectUri))
+                    context.startActivity(intent)
+                    snackbarHostState.showSnackbar(
+                        message = "✅ Verification successful - opening result",
+                        actionLabel = "Dismiss",
+                        duration = SnackbarDuration.Short
+                    )
+                } else {
+                    // Show plain response (our local verifier)
+                    snackbarHostState.showSnackbar(
+                        message = "Verifier Response: $serverResponse",
+                        actionLabel = "Dismiss",
+                        duration = SnackbarDuration.Long
+                    )
+                }
+            } catch (e: Exception) {
+                // Not JSON or no redirect_uri - show as-is
+                snackbarHostState.showSnackbar(
+                    message = "Verifier Response: $serverResponse",
+                    actionLabel = "Dismiss",
+                    duration = SnackbarDuration.Long
+                )
+            }
         }
     } catch (e: Exception) {
         Log.e("WalletApp", "Error sending VP Token", e)

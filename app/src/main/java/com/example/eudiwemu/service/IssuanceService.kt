@@ -34,7 +34,8 @@ import java.util.Date
 
 class IssuanceService(
     private val client: HttpClient,
-    private val walletKeyManager: WalletKeyManager
+    private val walletKeyManager: WalletKeyManager,
+    private val json: Json
 ) {
     private val dpopManager = DPoPManager(walletKeyManager)
 
@@ -134,7 +135,7 @@ class IssuanceService(
 
         val requestBody = """
             {
-              "format": "vc+sd-jwt",
+              "format": "dc+sd-jwt",
               "credentialConfigurationId": "${AppConfig.SCOPE}",
               "proof": {
                 "proofType": "jwt",
@@ -189,7 +190,6 @@ class IssuanceService(
         Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
 
         val decodedClaims = mutableMapOf<String, String>()
-        val json = Json { ignoreUnknownKeys = true }
 
         for (disclosure in disclosures) {
             try {

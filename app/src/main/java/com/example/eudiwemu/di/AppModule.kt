@@ -10,12 +10,18 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 
+// Shared Json parser configuration
+val appJson = Json { ignoreUnknownKeys = true }
+
 val appModule = module {
+    // Provide shared Json parser as a singleton
+    single { appJson }
+
     // Provide HttpClient as a singleton
     single {
         HttpClient(CIO) {
             install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
+                json(get<Json>())  // Reuse the shared Json instance
             }
         }
     }
@@ -25,6 +31,6 @@ val appModule = module {
 
     // Define single instances of your services
     // Inject dependencies into services
-    single { IssuanceService(get(), get()) }
-    single { VpTokenService(get(), get()) }
+    single { IssuanceService(get(), get(), get()) }  // Add Json dependency
+    single { VpTokenService(get(), get(), get()) }   // Add Json dependency
 }
