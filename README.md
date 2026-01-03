@@ -32,12 +32,21 @@ Full related article...
 ### Data-sharing (VP)
 
 1. Make sure you have a VC already stored.
-2. Open your browser and go to:  
-   `https://<REPLACE_WITH_YOUR_MACHINE_IP>/verifier/invoke-wallet`
-3. Press **"OPEN WITH YOUR WALLET"**
+2. Open your browser and go to: `https://<REPLACE_WITH_YOUR_MACHINE_IP>/verifier/invoke-wallet`
+3. Press **"HAIP WALLET"** or **"OpenID4VP WALLET"**
 4. Re-authenticate with biometrics if needed and follow the steps.
-5. If everything is OK, you will see:  
+5. If everything is OK, you will see:
    **✅ VP Token is valid!**
+
+#### Testing with EU Reference Verifier
+
+You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
+
+1. Select credential type: **"Portable Document A1 (PDA1)"**
+2. Select format: **`dc+sd-jwt`**
+3. Choose attributes: `credential_holder`, `nationality`, `competent_institution`
+4. Add your issuer's certificate as trusted issuer (copy from [issuer_cert.pem](https://github.com/kmandalas/spring-boot-vci-vp/blob/haip/issuer/src/main/resources/issuer_cert.pem))
+5. Tap deep link with the app
 
 ---
 
