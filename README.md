@@ -1,6 +1,7 @@
 # Android SD-JWT & VCI/VP Demo
-Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup.
-Full related article [here](https://dzone.com/articles/verifiable-credentials-spring-boot-android)
+Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup. This implementation follows the [HAIP (High Assurance Interoperability Profile)](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html) specification.
+
+Full related article...
 
 ## How to Test
 
@@ -49,9 +50,6 @@ Full related article [here](https://dzone.com/articles/verifiable-credentials-sp
 
 - [ ] handle `access_token` expiration while app is in-use
 - [ ] implement scan QR code for VP and the "Cross-device" flow in general
-- [ ] incorporate [EUDI Presentation Exchange v2 library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-presentation-exchange-kt)
-- [ ] incorporate [EUDI SD-JWT library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-sdjwt-kt)
-- [ ] incorporate [EUDI OpenId4VCI library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-openid4vci-kt)
 
 ---
 <details>
