@@ -1,7 +1,7 @@
 # Android SD-JWT & VCI/VP Demo
-Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup. This implementation follows the [HAIP (High Assurance Interoperability Profile)](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html) specification.
+Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup. 
 
-Full related article...
+This implementation follows the [HAIP (High Assurance Interoperability Profile)](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html) specification.
 
 ## How to Test
 
@@ -46,7 +46,6 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 2. Select format: **`dc+sd-jwt`**
 3. Choose attributes: `credential_holder`, `nationality`, `competent_institution`
 4. Add your issuer's certificate as trusted issuer (copy from [issuer_cert.pem](https://github.com/kmandalas/spring-boot-vci-vp/blob/haip/issuer/src/main/resources/issuer_cert.pem))
-5. Tap deep link with the app
 
 ---
 
