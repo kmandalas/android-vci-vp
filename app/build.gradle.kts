@@ -5,6 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0"
 }
 
+// Read LOCAL_IP from gradle.properties (defaults to localhost if not set)
+val localIp: String = project.findProperty("LOCAL_IP")?.toString() ?: "localhost"
+
 android {
     namespace = "com.example.eudiwemu"
     compileSdk = 35
@@ -24,10 +27,10 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            // ⚠️ Modify these for localhost development:
-             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.100.44:9000\"")
-             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.100.44:9000/oauth2/token\"")
-             buildConfigField("String", "ISSUER_URL", "\"http://192.168.100.44:8080\"")
+            // Uses LOCAL_IP from gradle.properties
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
         }
         release {
             isMinifyEnabled = false

@@ -3,6 +3,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain> <!-- Emulator -->
-        <domain includeSubdomains="true">192.168.100.44</domain> <!-- ⚠️ Replace with your machine's IP ⚠️ -->
+        <!-- ⚠️ Update this IP to match LOCAL_IP in gradle.properties ⚠️ -->
+        <domain includeSubdomains="true">192.168.100.44</domain>
     </domain-config>
 </network-security-config>
