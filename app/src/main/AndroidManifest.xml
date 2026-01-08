@@ -34,6 +34,14 @@
                 <data android:scheme="openid4vp" />
             </intent-filter>
 
+            <!-- Deep link intent filter for HAIP-VP flow -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="haip-vp" />
+            </intent-filter>
+
             <!-- Deep link handler for OAuth2 redirect -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

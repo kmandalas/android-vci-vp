@@ -25,9 +25,9 @@ android {
         debug {
             isMinifyEnabled = false
             // ⚠️ Modify these for localhost development:
-             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.1.65:9000\"")
-             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.1.65:9000/oauth2/token\"")
-             buildConfigField("String", "ISSUER_URL", "\"http://192.168.1.65:8080\"")
+             buildConfigField("String", "AUTH_SERVER_HOST", "\"192.168.100.44:9000\"")
+             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://192.168.100.44:9000/oauth2/token\"")
+             buildConfigField("String", "ISSUER_URL", "\"http://192.168.100.44:8080\"")
         }
         release {
             isMinifyEnabled = false
