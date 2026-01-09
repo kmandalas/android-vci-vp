@@ -1,6 +1,7 @@
 # Android SD-JWT & VCI/VP Demo
-Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup.
-Full related article [here](https://dzone.com/articles/verifiable-credentials-spring-boot-android)
+Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup. 
+
+This implementation follows (partially) the [HAIP (High Assurance Interoperability Profile)](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html) specification.
 
 ## How to Test
 
@@ -31,12 +32,20 @@ Full related article [here](https://dzone.com/articles/verifiable-credentials-sp
 ### Data-sharing (VP)
 
 1. Make sure you have a VC already stored.
-2. Open your browser and go to:  
-   `https://<REPLACE_WITH_YOUR_MACHINE_IP>/verifier/invoke-wallet`
-3. Press **"OPEN WITH YOUR WALLET"**
+2. Open your browser and go to: `https://<REPLACE_WITH_YOUR_MACHINE_IP>/verifier/invoke-wallet`
+3. Press **"HAIP WALLET"** or **"OpenID4VP WALLET"**
 4. Re-authenticate with biometrics if needed and follow the steps.
-5. If everything is OK, you will see:  
+5. If everything is OK, you will see:
    **✅ VP Token is valid!**
+
+#### Testing with EU Reference Verifier
+
+You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
+
+1. Select credential type: **"Portable Document A1 (PDA1)"**
+2. Select format: **`dc+sd-jwt`**
+3. Choose attributes: `credential_holder`, `nationality`, `competent_institution`
+4. Add your issuer's certificate as trusted issuer (copy from [issuer_cert.pem](https://github.com/kmandalas/spring-boot-vci-vp/blob/haip/issuer/src/main/resources/issuer_cert.pem))
 
 ---
 
@@ -49,9 +58,6 @@ Full related article [here](https://dzone.com/articles/verifiable-credentials-sp
 
 - [ ] handle `access_token` expiration while app is in-use
 - [ ] implement scan QR code for VP and the "Cross-device" flow in general
-- [ ] incorporate [EUDI Presentation Exchange v2 library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-presentation-exchange-kt)
-- [ ] incorporate [EUDI SD-JWT library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-sdjwt-kt)
-- [ ] incorporate [EUDI OpenId4VCI library](https://github.com/eu-digital-identity-wallet/eudi-lib-jvm-openid4vci-kt)
 
 ---
 <details>

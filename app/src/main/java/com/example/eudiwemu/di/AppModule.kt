@@ -28,7 +28,6 @@ val appModule = module {
     single { WalletKeyManager() }
 
     // Define single instances of your services
-    // Inject dependencies into services
     single { IssuanceService(get(), get()) }
     single { VpTokenService(get(), get()) }
     single { WuaIssuanceService(get(), get()) }
