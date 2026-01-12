@@ -11,7 +11,6 @@ import com.nimbusds.jose.jwk.Curve
 import com.nimbusds.jose.jwk.ECKey
 import java.security.KeyPairGenerator
 import java.security.KeyStore
-import java.security.PrivateKey
 import java.security.cert.Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -105,13 +104,6 @@ class WalletKeyManager {
             .build()
     }
 
-    // Retrieve the private key (if needed for signing)
-    fun getPrivateKey(): PrivateKey {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val entry = keyStore.getEntry(AppConfig.KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
-        return entry.privateKey
-    }
-
     // ==================== WUA Key Management ====================
 
     /**
@@ -184,15 +176,6 @@ class WalletKeyManager {
             .keyID(AppConfig.WUA_KEY_ALIAS)
             .algorithm(JWSAlgorithm.ES256)
             .build()
-    }
-
-    /**
-     * Retrieve the WUA private key for signing operations
-     */
-    fun getWuaPrivateKey(): PrivateKey {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val entry = keyStore.getEntry(AppConfig.WUA_KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
-        return entry.privateKey
     }
 
     /**
