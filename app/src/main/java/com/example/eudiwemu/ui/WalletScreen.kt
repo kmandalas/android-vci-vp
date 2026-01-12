@@ -471,9 +471,15 @@ suspend fun submitCredentialRequest(
             return Result.failure(Exception("❌ Access token is missing!"))
         }
 
+        // Get stored WUA (required for key_attestation header)
+        val storedWua = prefs.getString("stored_wua", null)
+        if (storedWua.isNullOrEmpty()) {
+            return Result.failure(Exception("❌ WUA not found - wallet not activated!"))
+        }
+
         // Proceed with issuance
         val nonce = issuanceService.getNonce(accessToken)
-        val jwtProof = issuanceService.createJwtProof(nonce)
+        val jwtProof = issuanceService.createJwtProof(nonce, storedWua)
         val storedCredential = issuanceService.requestCredential(accessToken, jwtProof)
         val claims = issuanceService.decodeCredential(storedCredential)
 

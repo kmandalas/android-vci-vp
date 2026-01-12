@@ -31,7 +31,7 @@ android {
             buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
             buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
-            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:8081/wp\"")
+            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
         }
         release {
             isMinifyEnabled = false

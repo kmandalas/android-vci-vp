@@ -16,6 +16,39 @@ import java.security.cert.Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 
+/**
+ * Manages cryptographic keys stored in Android Keystore.
+ *
+ * ## Key Architecture
+ *
+ * This wallet uses **two separate keys** for different purposes:
+ *
+ * ### 1. Wallet Key (`KEY_ALIAS`)
+ * - **Purpose**: DPoP (Demonstrating Proof-of-Possession) token binding
+ * - **Used at**: Authorization Server (token endpoint) and Issuer (credential endpoint)
+ * - **Attestation**: None (generated without attestation challenge)
+ * - **Security**: Hardware-backed (TEE/StrongBox) but not externally verifiable
+ *
+ * ### 2. WUA Key (`WUA_KEY_ALIAS`)
+ * - **Purpose**: Wallet Unit Attestation, credential request proofs, and VP Key Binding JWTs
+ * - **Used at**: Wallet Provider (WUA issuance), Issuer (credential requests via key_attestation), Verifier (VP presentations)
+ * - **Attestation**: Android Key Attestation with challenge from Wallet Provider
+ * - **Security**: Hardware-backed AND externally verifiable via X.509 certificate chain
+ *
+ * ## Why Two Keys?
+ *
+ * - **Wallet Key**: Created on first app launch, used for DPoP throughout the session.
+ *   DPoP binds access tokens to this key, preventing token theft.
+ *
+ * - **WUA Key**: Created with attestation challenge from Wallet Provider. The attestation
+ *   certificate chain proves the key is protected by hardware (TEE/StrongBox).
+ *   The Issuer can verify this via the `key_attestation` header in JWT proofs.
+ *
+ * @see DPoPManager Uses Wallet Key for DPoP proofs
+ * @see WuaIssuanceService Uses WUA Key for WUA proofs
+ * @see IssuanceService Uses WUA Key for credential request proofs (with key_attestation)
+ * @see VpTokenService Uses WUA Key for VP Key Binding JWTs
+ */
 class WalletKeyManager {
 
     companion object {

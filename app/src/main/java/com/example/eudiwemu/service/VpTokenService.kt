@@ -43,13 +43,18 @@ import java.text.ParseException
 
 class VpTokenService(
     private val client: HttpClient,
-    private val walletKeyManager: WalletKeyManager,
-    private val json: Json
+    private val walletKeyManager: WalletKeyManager
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
 
     /**
      * Fetches and verifies the signed Authorization Request (JAR) from the request URI.
      * Validates the JWT signature using the x5c certificate and verifies x509_hash client_id.
+     *
+     * Security: The x509_hash in client_id acts as key pinning - it's the SHA-256 hash of the
+     * verifier's signing certificate. This provides similar protection to JWKS cross-checking.
+     * Note: client_metadata.jwks contains the verifier's encryption key (ephemeral, per-request),
+     * which is different from the signing key in x5c, so JWKS cross-check is not applicable here.
      */
     suspend fun getRequestObject(requestUri: String, expectedClientId: String): AuthorizationRequestResponse {
         // Request the signed authorization request (JAR) with proper Accept header
@@ -255,7 +260,7 @@ class VpTokenService(
         val audience = listOf(clientId)
 
         // Create the binding JWT, part of the verifiable presentation
-        val bindingJwt = createBindingJwt(vc, disclosuresToUse, audience, nonce, walletKeyManager.getWalletKey())
+        val bindingJwt = createBindingJwt(vc, disclosuresToUse, audience, nonce, walletKeyManager.getWuaKey())
 
         // Create and return a Verifiable Presentation (VP) in SD-JWT format
         return SDJWT(vc.credentialJwt, disclosuresToUse, bindingJwt.serialize())
@@ -280,7 +285,7 @@ class VpTokenService(
         val jwt = SignedJWT(header, JWTClaimsSet.parse(payload))
 
         // Create a signer
-        val signer = AndroidKeystoreSigner(AppConfig.KEY_ALIAS)
+        val signer = AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)
 
         // Let the signer sign the binding JWT
         jwt.sign(signer)

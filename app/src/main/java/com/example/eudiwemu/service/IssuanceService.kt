@@ -12,9 +12,15 @@ import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
 import com.nimbusds.jose.crypto.ECDSAVerifier
+import com.nimbusds.jose.jwk.Curve
+import com.nimbusds.jose.jwk.ECKey
 import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
+import java.io.ByteArrayInputStream
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.security.interfaces.ECPublicKey
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.basicAuth
@@ -34,9 +40,9 @@ import java.util.Date
 
 class IssuanceService(
     private val client: HttpClient,
-    private val walletKeyManager: WalletKeyManager,
-    private val json: Json
+    private val walletKeyManager: WalletKeyManager
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
     private val dpopManager = DPoPManager(walletKeyManager)
 
     @Deprecated("replaced client_credentials with authorization_code flow")
@@ -101,11 +107,21 @@ class IssuanceService(
         return response.c_nonce
     }
 
-    fun createJwtProof(nonce: String): String {
-        val ecKey = walletKeyManager.getWalletKey()
+    /**
+     * Create JWT proof for credential request.
+     * Uses WUA key (attested) and includes key_attestation header with WUA JWT.
+     *
+     * @param nonce The nonce from the issuer
+     * @param wuaJwt The Wallet Unit Attestation JWT (from encrypted SharedPreferences)
+     * @return Serialized JWT proof string
+     */
+    fun createJwtProof(nonce: String, wuaJwt: String): String {
+        Log.d("IssuanceService", "Creating JWT proof with WUA key_attestation")
+
         val header = JWSHeader.Builder(JWSAlgorithm.ES256)
             .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .jwk(ecKey.toPublicJWK())
+            .keyID("0")  // Index into attested_keys in WUA
+            .customParam("key_attestation", wuaJwt)
             .build()
 
         val claims = JWTClaimsSet.Builder()
@@ -117,8 +133,7 @@ class IssuanceService(
             .build()
 
         val signedJWT = SignedJWT(header, claims)
-        // val signer = ECDSASigner(ecKey.toECPrivateKey())
-        val signer = AndroidKeystoreSigner(AppConfig.KEY_ALIAS) // ✅ Uses Android Keystore API
+        val signer = AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)  // WUA key (attested)
         signedJWT.sign(signer)
 
         return signedJWT.serialize()
@@ -155,7 +170,7 @@ class IssuanceService(
         return jsonResponse["credential"] ?: throw Exception("Failed to request credential")
     }
 
-     private suspend fun verifyCredential(sdJwt: String) {
+    private suspend fun verifyCredential(sdJwt: String) {
         Log.d("WalletApp", "Verifying SD-JWT...")
         if (sdJwt.isEmpty()) throw RuntimeException("No SD-JWT included!")
 
@@ -167,18 +182,60 @@ class IssuanceService(
         Log.d("WalletApp", "Parsed JWT: $jwtPart")
         Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
 
+        val signedJwt = SignedJWT.parse(jwtPart)
+
         // Step 2: Fetch the issuer's public key (JWKS)
         val jwkSet = fetchIssuerJWKSet("${AppConfig.ISSUER_URL}/.well-known/jwks.json")
+        val jwksKey = jwkSet.keys.first().toECKey()
 
-        // Step 3: Verify the SD-JWT signature
-        val signedJwt = SignedJWT.parse(jwtPart)
-        val publicKey = jwkSet.keys.first().toECKey()
-        val verifier = ECDSAVerifier(publicKey)
+        // Step 3: Extract public key from x5c header and cross-check with JWKS
+        val x5cKey = extractKeyFromX5c(signedJwt)
+        if (!keysMatch(jwksKey, x5cKey)) {
+            throw SecurityException("x5c key does not match issuer JWKS - possible tampering")
+        }
+        Log.d("WalletApp", "x5c key matches JWKS key - cross-check passed")
 
+        // Step 4: Verify the SD-JWT signature using JWKS key
+        val verifier = ECDSAVerifier(jwksKey)
         val isValid = signedJwt.verify(verifier)
         Log.d("WalletApp", "Signature valid: $isValid")
 
         if (!isValid) throw RuntimeException("Invalid SD-JWT signature!")
+    }
+
+    /**
+     * Extracts the issuer's public key from the x5c certificate chain in the JWT header.
+     */
+    private fun extractKeyFromX5c(signedJwt: SignedJWT): ECKey {
+        val x5cChain = signedJwt.header.x509CertChain
+            ?: throw IllegalArgumentException("No x5c certificate chain in credential JWT header")
+
+        if (x5cChain.isEmpty()) {
+            throw IllegalArgumentException("Empty x5c certificate chain")
+        }
+
+        // Parse leaf certificate (first in chain)
+        val certBytes = x5cChain[0].decode()
+        val certFactory = CertificateFactory.getInstance("X.509")
+        val certificate = certFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
+
+        // Extract EC public key and build JWK
+        val ecPublicKey = certificate.publicKey as ECPublicKey
+        return ECKey.Builder(Curve.P_256, ecPublicKey).build()
+    }
+
+    /**
+     * Compares two ECKeys by their thumbprint.
+     */
+    private fun keysMatch(jwksKey: ECKey, x5cKey: ECKey): Boolean {
+        return try {
+            val jwksThumbprint = jwksKey.computeThumbprint().toString()
+            val x5cThumbprint = x5cKey.computeThumbprint().toString()
+            jwksThumbprint == x5cThumbprint
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Failed to compute key thumbprints", e)
+            false
+        }
     }
 
     fun decodeCredential(sdJwt: String): Map<String, String> {

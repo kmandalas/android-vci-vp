@@ -269,7 +269,7 @@ class WuaIssuanceService(
      */
     private suspend fun fetchWalletProviderJWKSet(): JWKSet {
         return try {
-            val response: HttpResponse = client.get("${AppConfig.WALLET_PROVIDER_URL}/jwks")
+            val response: HttpResponse = client.get("${AppConfig.WALLET_PROVIDER_URL}/.well-known/jwks.json")
             val jwksJson: String = response.bodyAsText()
             JWKSet.parse(jwksJson)
         } catch (e: Exception) {
