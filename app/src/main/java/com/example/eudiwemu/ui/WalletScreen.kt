@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import com.authlete.sd.Disclosure
+import com.example.eudiwemu.QrScannerActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
 import com.example.eudiwemu.security.PkceManager
@@ -218,6 +219,15 @@ fun WalletScreen(
 
                 credentialClaims?.let {
                     CredentialCard(it)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val intent = Intent(context, QrScannerActivity::class.java)
+                            activity.startActivity(intent)
+                        }
+                    ) {
+                        Text("Scan QR")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

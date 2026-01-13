@@ -96,6 +96,8 @@ dependencies {
     implementation("io.ktor:ktor-client-serialization:2.3.0")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.0")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.0")
+    implementation("io.ktor:ktor-client-android:2.3.0")
+    implementation("io.ktor:ktor-client-logging:2.3.0")
 
     // JSON Processing
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.0")
@@ -107,6 +109,12 @@ dependencies {
 
     // Authlete SD-JWT
     implementation("com.authlete:sd-jwt:1.5")
+
+    //QR Scanning
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // Other
     implementation ("io.insert-koin:koin-android:3.5.0")
