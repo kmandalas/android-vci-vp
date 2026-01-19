@@ -53,12 +53,6 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 
 📺 You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/cxIgyTR8s6w).
 
-
-### TODOs
-
-- [ ] handle `access_token` expiration while app is in-use
-- [ ] implement scan QR code for VP and the "Cross-device" flow in general
-
 ---
 <details>
 <summary>⚠️ Disclaimer</summary>
