@@ -182,6 +182,7 @@ class WuaIssuanceService(
 
     /**
      * Decode WUA credential claims for display.
+     * Supports both TS3 format (wscd_info) and legacy format (key_storage_info).
      *
      * @param wuaJwt The WUA credential JWT
      * @return Map of claim names to values
@@ -195,25 +196,61 @@ class WuaIssuanceService(
 
         val result = mutableMapOf<String, Any>()
         result["issuer"] = claims.issuer ?: "unknown"
-        result["wua_id"] = claims.getStringClaim("wua_id") ?: "unknown"
+        // Use jti (JWT ID) as unique WUA identifier; fallback to legacy 'wua_id'
+        result["wua_id"] = claims.jwtid ?: claims.getStringClaim("wua_id") ?: "unknown"
         result["issued_at"] = claims.issueTime?.toString() ?: "unknown"
         result["expires_at"] = claims.expirationTime?.toString() ?: "unknown"
+        // Store raw expiration for display formatting
+        claims.expirationTime?.let { result["expires_at_date"] = it }
 
-        // Extract wallet info
+        // Try to extract key_storage from top-level claim (OID4VCI standard)
+        val keyStorage = claims.getStringListClaim("key_storage")
+        if (!keyStorage.isNullOrEmpty()) {
+            result["key_storage"] = keyStorage.first()
+            // Map ISO 18045 level to display-friendly WSCD type
+            result["wscd_type"] = mapIso18045ToWscdType(keyStorage.first())
+            result["security_level"] = keyStorage.first()
+        }
+
+        // Extract wallet info from eudi_wallet_info
         val walletInfo = claims.getJSONObjectClaim("eudi_wallet_info")
         if (walletInfo != null) {
-            val keyStorageInfo = walletInfo["key_storage_info"] as? Map<String, Any>
-            if (keyStorageInfo != null) {
-                val certInfo = keyStorageInfo["storage_certification_information"] as? Map<String, Any>
-                if (certInfo != null) {
-                    result["wscd_type"] = certInfo["wscd_type"] ?: "unknown"
-                    result["security_level"] = certInfo["security_level"] ?: "unknown"
+            // Try TS3 format first: wscd_info.wscd_certification_information
+            val wscdInfo = walletInfo["wscd_info"] as? Map<String, Any>
+            if (wscdInfo != null) {
+                val wscdCertInfo = wscdInfo["wscd_certification_information"] as? Map<String, Any>
+                if (wscdCertInfo != null) {
+                    result["wscd_type"] = wscdCertInfo["wscd_type"] ?: result["wscd_type"] ?: "unknown"
+                    result["security_level"] = wscdCertInfo["security_level"] ?: result["security_level"] ?: "unknown"
+                }
+            } else {
+                // Fallback to legacy format: key_storage_info.storage_certification_information
+                val keyStorageInfo = walletInfo["key_storage_info"] as? Map<String, Any>
+                if (keyStorageInfo != null) {
+                    val certInfo = keyStorageInfo["storage_certification_information"] as? Map<String, Any>
+                    if (certInfo != null) {
+                        result["wscd_type"] = certInfo["wscd_type"] ?: "unknown"
+                        result["security_level"] = certInfo["security_level"] ?: "unknown"
+                    }
                 }
             }
         }
 
         Log.d(TAG, "Decoded WUA claims: $result")
         return result
+    }
+
+    /**
+     * Map ISO 18045 attack potential resistance level to WSCD type for display.
+     */
+    private fun mapIso18045ToWscdType(iso18045Level: String): String {
+        return when (iso18045Level) {
+            "iso_18045_high" -> "strongbox"
+            "iso_18045_moderate" -> "tee"
+            "iso_18045_enhanced-basic" -> "tee"
+            "iso_18045_basic" -> "software"
+            else -> "unknown"
+        }
     }
 
     /**

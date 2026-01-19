@@ -32,6 +32,10 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
     val wscdType = wuaInfo["wscd_type"] as? String ?: "unknown"
     val securityLevel = wuaInfo["security_level"] as? String ?: "unknown"
     val wuaId = wuaInfo["wua_id"] as? String ?: "unknown"
+    val expiresAt = wuaInfo["expires_at_date"] as? java.util.Date
+    val expiresAtFormatted = expiresAt?.let {
+        java.text.SimpleDateFormat("dd MMM yyyy HH:mm", java.util.Locale.getDefault()).format(it)
+    } ?: wuaInfo["expires_at"] as? String ?: "unknown"
 
     val isActive = status.lowercase() == "active"
     val statusColor = if (isActive) Color(0xFF4CAF50) else Color(0xFFFF9800)
@@ -90,9 +94,10 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
             Spacer(modifier = Modifier.height(12.dp))
 
             // Security details
-            WuaDetailRow("Security Level", securityLevel.replaceFirstChar { it.uppercase() })
+            WuaDetailRow("Security Level", formatSecurityLevel(securityLevel))
             WuaDetailRow("WSCD Type", formatWscdType(wscdType))
-            WuaDetailRow("WUA ID", wuaId.take(8) + "...")
+            WuaDetailRow("Expires", expiresAtFormatted)
+            WuaDetailRow("WUA ID", if (wuaId.length > 8) wuaId.take(8) + "..." else wuaId)
         }
     }
 }
@@ -123,6 +128,22 @@ private fun formatWscdType(wscdType: String): String {
         "strongbox" -> "StrongBox (Hardware)"
         "tee" -> "TEE (Trusted Execution)"
         "software" -> "Software"
+        "iso_18045_high" -> "StrongBox (Hardware)"
+        "iso_18045_moderate", "iso_18045_enhanced-basic" -> "TEE (Trusted Execution)"
+        "iso_18045_basic" -> "Software"
         else -> wscdType.replaceFirstChar { it.uppercase() }
+    }
+}
+
+private fun formatSecurityLevel(securityLevel: String): String {
+    return when (securityLevel.lowercase()) {
+        "strongbox" -> "StrongBox (High)"
+        "trustedenvironment", "tee" -> "TEE (High)"
+        "software" -> "Software (Basic)"
+        "iso_18045_high" -> "ISO 18045 High"
+        "iso_18045_moderate" -> "ISO 18045 Moderate"
+        "iso_18045_enhanced-basic" -> "ISO 18045 Enhanced-Basic"
+        "iso_18045_basic" -> "ISO 18045 Basic"
+        else -> securityLevel.replaceFirstChar { it.uppercase() }
     }
 }

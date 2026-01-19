@@ -78,8 +78,12 @@ fun WalletScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var expanded by remember { mutableStateOf(false) }
-    val options = listOf("VerifiablePortableDocumentA1")
-    var selectedOption by remember { mutableStateOf("") }
+    // Map of display label to credential configuration ID
+    val credentialTypes = mapOf(
+        "Portable Document A1 (PDA1)" to "eu.europa.ec.eudi.pda1_sd_jwt_vc"
+    )
+    var selectedLabel by remember { mutableStateOf("") }
+    var selectedValue by remember { mutableStateOf("") }
 
     // Load stored credential and WUA on launch
     LaunchedEffect(Unit) {
@@ -160,7 +164,7 @@ fun WalletScreen(
                 // Dropdown Menu
                 Box {
                     OutlinedTextField(
-                        value = selectedOption,
+                        value = selectedLabel,
                         onValueChange = {},
                         label = { Text("Select VC Type") },
                         readOnly = true,
@@ -180,11 +184,12 @@ fun WalletScreen(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
                     ) {
-                        options.forEach { option ->
+                        credentialTypes.forEach { (label, value) ->
                             DropdownMenuItem(
-                                text = { Text(option) },
+                                text = { Text(label) },
                                 onClick = {
-                                    selectedOption = option
+                                    selectedLabel = label
+                                    selectedValue = value
                                     expanded = false
                                 }
                             )
@@ -211,14 +216,29 @@ fun WalletScreen(
                                 )
                             }
                         },
-                        enabled = selectedOption == "VerifiablePortableDocumentA1"
+                        enabled = selectedValue.isNotEmpty()
                     ) {
                         Text("Request VC")
                     }
                 }
 
                 credentialClaims?.let {
-                    CredentialCard(it)
+                    CredentialCard(
+                        claims = it,
+                        onDelete = {
+                            coroutineScope.launch {
+                                try {
+                                    val prefs = getEncryptedPrefs(context, activity)
+                                    prefs.edit().remove("stored_vc").apply()
+                                    credentialClaims = null
+                                    snackbarHostState.showSnackbar("Credential deleted")
+                                } catch (e: Exception) {
+                                    Log.e("WalletApp", "Error deleting credential", e)
+                                    snackbarHostState.showSnackbar("Error deleting credential")
+                                }
+                            }
+                        }
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = {
@@ -300,18 +320,44 @@ suspend fun requestCredential(
                 onSuccess(claims)
                 snackbarHostState.showSnackbar(message)
             } else {
-                snackbarHostState.showSnackbar("❌ Error: ${result.exceptionOrNull()?.message}")
+                val errorMsg = result.exceptionOrNull()?.message ?: ""
+                // Check for auth errors (401, expired token, etc.)
+                if (isAuthError(errorMsg)) {
+                    Log.w("WalletApp", "Token expired or invalid, clearing and restarting auth")
+                    prefs.edit().remove("access_token").apply()
+                    snackbarHostState.showSnackbar("Session expired, please authenticate again")
+                    startAuthorizationFlow(activity, context)
+                } else {
+                    snackbarHostState.showSnackbar("❌ Error: $errorMsg")
+                }
             }
         }
     } catch (e: Exception) {
         Log.e("WalletApp", "Error requesting VC", e)
         onLoadingChanged(false)
-        snackbarHostState.showSnackbar(
-            message = "❌ Error requesting VC: ${e.message}",
-            actionLabel = "Dismiss",
-            duration = SnackbarDuration.Long
-        )
+        val errorMsg = e.message ?: ""
+        val prefs = getEncryptedPrefs(context, activity)
+        if (isAuthError(errorMsg)) {
+            prefs.edit().remove("access_token").apply()
+            snackbarHostState.showSnackbar("Session expired, please authenticate again")
+            startAuthorizationFlow(activity, context)
+        } else {
+            snackbarHostState.showSnackbar(
+                message = "❌ Error requesting VC: ${e.message}",
+                actionLabel = "Dismiss",
+                duration = SnackbarDuration.Long
+            )
+        }
     }
+}
+
+private fun isAuthError(errorMessage: String): Boolean {
+    val lowerMsg = errorMessage.lowercase()
+    return lowerMsg.contains("401") ||
+            lowerMsg.contains("unauthorized") ||
+            lowerMsg.contains("expired") ||
+            lowerMsg.contains("invalid_token") ||
+            lowerMsg.contains("invalid token")
 }
 
 

@@ -7,7 +7,7 @@ class AppConfig {
     companion object {
         const val CLIENT_ID = "wallet-client"
         const val CLIENT_SECRET = "wallet-secret"
-        const val SCOPE = "VerifiablePortableDocumentA1"
+        const val SCOPE = "eu.europa.ec.eudi.pda1_sd_jwt_vc"
         const val REDIRECT_URI = "myapp://callback"
         const val KEY_ALIAS = "wallet-key"
         const val WUA_KEY_ALIAS = "wua-key"
