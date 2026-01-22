@@ -1,13 +1,17 @@
 package com.example.eudiwemu.service
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Base64
 import android.util.Log
+import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
 import com.example.eudiwemu.dto.NonceResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
+import com.example.eudiwemu.security.getEncryptedPrefs
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -40,10 +44,32 @@ import java.util.Date
 
 class IssuanceService(
     private val client: HttpClient,
-    private val walletKeyManager: WalletKeyManager
+    private val wiaService: WiaService? = null,
+    walletKeyManager: WalletKeyManager,
+    private val context: Context
 ) {
+    companion object {
+        private const val TAG = "IssuanceService"
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
     private val dpopManager = DPoPManager(walletKeyManager)
+
+    // Encrypted SharedPreferences - lazily initialized when activity context is available
+    private var _encryptedPrefs: SharedPreferences? = null
+
+    /**
+     * Initialize encrypted preferences with a FragmentActivity context.
+     * Must be called from an Activity before using storage-related methods.
+     */
+    suspend fun initWithActivity(activity: FragmentActivity) {
+        _encryptedPrefs = getEncryptedPrefs(context, activity)
+    }
+
+    private val encryptedPrefs: SharedPreferences
+        get() = _encryptedPrefs ?: throw IllegalStateException(
+            "IssuanceService not initialized with Activity. Call initWithActivity() first."
+        )
 
     @Deprecated("replaced client_credentials with authorization_code flow")
     suspend fun obtainAccessToken(): AccessTokenResponse {
@@ -80,6 +106,14 @@ class IssuanceService(
                 }
             ) {
                 header("DPoP", dpopProof)
+
+                // Add WIA authentication headers if WIA is available
+                wiaService?.getStoredWia()?.let { wia ->
+                    Log.d("IssuanceService", "Adding WIA authentication headers")
+                    val popJwt = wiaService.createPopJwt(AppConfig.AUTH_SERVER_ISSUER)
+                    header("OAuth-Client-Attestation", wia)
+                    header("OAuth-Client-Attestation-PoP", popJwt)
+                }
             }
 
             val accessTokenResponse = response.body<AccessTokenResponse>()
@@ -166,8 +200,64 @@ class IssuanceService(
             setBody(requestBody)
         }
         val jsonResponse: Map<String, String> = response.body()
-        verifyCredential(jsonResponse["credential"].orEmpty())
-        return jsonResponse["credential"] ?: throw Exception("Failed to request credential")
+        val credential = jsonResponse["credential"] ?: throw Exception("Failed to request credential")
+
+        // Verify and store the credential
+        verifyCredential(credential)
+        storeCredential(credential, AppConfig.SCOPE)
+
+        return credential
+    }
+
+    /**
+     * Store credential in encrypted SharedPreferences.
+     * Uses credential type as part of the key for multi-credential support.
+     */
+    private fun storeCredential(credential: String, credentialConfigurationId: String) {
+        val credentialType = AppConfig.extractCredentialType(credentialConfigurationId)
+        val storageKey = AppConfig.getCredentialStorageKey(credentialType)
+        encryptedPrefs.edit()
+            .putString(storageKey, credential)
+            .apply()
+        Log.d(TAG, "Credential stored successfully with key: $storageKey")
+    }
+
+    /**
+     * Get stored credential from encrypted SharedPreferences.
+     *
+     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
+     * @return The credential string, or null if not available or prefs not initialized
+     */
+    fun getStoredCredential(credentialType: String? = null): String? {
+        if (_encryptedPrefs == null) {
+            Log.d(TAG, "IssuanceService not initialized with Activity, cannot get stored credential")
+            return null
+        }
+
+        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
+        val storageKey = AppConfig.getCredentialStorageKey(type)
+        val credential = encryptedPrefs.getString(storageKey, null)
+
+        if (credential.isNullOrEmpty()) {
+            Log.d(TAG, "No stored credential found for type: $type")
+            return null
+        }
+
+        return credential
+    }
+
+    /**
+     * Remove stored credential from encrypted SharedPreferences.
+     *
+     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
+     */
+    fun removeCredential(credentialType: String? = null) {
+        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
+        val storageKey = AppConfig.getCredentialStorageKey(type)
+        encryptedPrefs.edit()
+            .remove(storageKey)
+            .apply()
+        Log.d(TAG, "Credential removed for type: $type")
     }
 
     private suspend fun verifyCredential(sdJwt: String) {

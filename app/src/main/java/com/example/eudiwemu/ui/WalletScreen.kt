@@ -47,7 +47,7 @@ import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
-import com.example.eudiwemu.service.WuaIssuanceService
+import com.example.eudiwemu.service.WuaService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,7 +60,7 @@ fun WalletScreen(
     intent: Intent?,
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
-    wuaIssuanceService: WuaIssuanceService
+    wuaService: WuaService
 ) {
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
@@ -88,20 +88,22 @@ fun WalletScreen(
     // Load stored credential and WUA on launch
     LaunchedEffect(Unit) {
         try {
-            val prefs = getEncryptedPrefs(context, activity)
+            // Initialize services with activity context for encrypted prefs access
+            wuaService.initWithActivity(activity)
+            issuanceService.initWithActivity(activity)
 
-            // Load WUA
-            val storedWua = prefs.getString("stored_wua", null)
+            // Load WUA using service method
+            val storedWua = wuaService.getStoredWua()
             if (!storedWua.isNullOrEmpty()) {
                 try {
-                    wuaInfo = wuaIssuanceService.decodeWuaCredential(storedWua)
+                    wuaInfo = wuaService.decodeWuaCredential(storedWua)
                 } catch (e: Exception) {
                     Log.e("WalletApp", "Error decoding stored WUA", e)
                 }
             }
 
-            // Load VC
-            val storedCredential = prefs.getString("stored_vc", null)
+            // Load VC using service method
+            val storedCredential = issuanceService.getStoredCredential()
             if (!storedCredential.isNullOrEmpty()) {
                 try {
                     credentialClaims = issuanceService.decodeCredential(storedCredential)
@@ -110,7 +112,7 @@ fun WalletScreen(
                 }
             }
         } catch (e: Exception) {
-            Log.e("WalletApp", "Error fetching encrypted prefs: $e")
+            Log.e("WalletApp", "Error initializing services: $e")
         }
     }
 
@@ -124,6 +126,7 @@ fun WalletScreen(
             requestUri = requestUri,
             issuanceService = issuanceService,
             vpTokenService = vpTokenService,
+            wuaService = wuaService,
             selectedClaims = selectedClaims,
             clientName = clientName,
             logoUri = logoUri,
@@ -210,6 +213,7 @@ fun WalletScreen(
                                     context = context,
                                     activity = activity,
                                     issuanceService = issuanceService,
+                                    wuaService = wuaService,
                                     snackbarHostState = snackbarHostState,
                                     onLoadingChanged = { isLoading = it },
                                     onSuccess = { claims -> credentialClaims = claims }
@@ -228,8 +232,7 @@ fun WalletScreen(
                         onDelete = {
                             coroutineScope.launch {
                                 try {
-                                    val prefs = getEncryptedPrefs(context, activity)
-                                    prefs.edit().remove("stored_vc").apply()
+                                    issuanceService.removeCredential()
                                     credentialClaims = null
                                     snackbarHostState.showSnackbar("Credential deleted")
                                 } catch (e: Exception) {
@@ -266,7 +269,7 @@ fun WalletScreen(
             onConfirm = { selected ->
                 coroutineScope.launch {
                     submitVpToken(
-                        context, activity, vpTokenService, selected,
+                        context, vpTokenService, issuanceService, selected,
                         responseUri.value, clientId.value, nonce.value,
                         authRequest.value, snackbarHostState
                     )
@@ -300,6 +303,7 @@ suspend fun requestCredential(
     context: Context,
     activity: FragmentActivity,
     issuanceService: IssuanceService,
+    wuaService: WuaService,
     snackbarHostState: SnackbarHostState,
     onLoadingChanged: (Boolean) -> Unit,
     onSuccess: (Map<String, String>) -> Unit
@@ -312,7 +316,7 @@ suspend fun requestCredential(
             startAuthorizationFlow(activity, context)
             onLoadingChanged(false)
         } else {
-            val result = submitCredentialRequest(activity, context, issuanceService)
+            val result = submitCredentialRequest(activity, context, issuanceService, wuaService)
 
             onLoadingChanged(false)
             if (result.isSuccess) {
@@ -370,6 +374,7 @@ suspend fun handleDeepLink(
     requestUri: MutableState<String>,
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
+    wuaService: WuaService,
     selectedClaims: MutableState<List<Disclosure>?>,
     clientName: MutableState<String>,
     logoUri: MutableState<String>,
@@ -385,13 +390,13 @@ suspend fun handleDeepLink(
     when (uri.scheme) {
         "myapp" -> handleOAuthDeepLink(
             uri, context, activity,
-            issuanceService, isLoadingSetter,
+            issuanceService, wuaService, isLoadingSetter,
             setCredentialClaims, showSnackbar
         )
 
         "openid4vp", "haip-vp" -> handleVpTokenDeepLink(
             uri, context, activity,
-            vpTokenService, clientId, requestUri,
+            vpTokenService, issuanceService, clientId, requestUri,
             responseUri, selectedClaims,
             clientName, logoUri, purpose, nonce, authRequest
         )
@@ -405,6 +410,7 @@ private suspend fun handleOAuthDeepLink(
     context: Context,
     activity: FragmentActivity,
     issuanceService: IssuanceService,
+    wuaService: WuaService,
     isLoadingSetter: (Boolean) -> Unit,
     setCredentialClaims: (Map<String, String>) -> Unit,
     showSnackbar: suspend (String) -> Unit
@@ -430,7 +436,7 @@ private suspend fun handleOAuthDeepLink(
         }
 
         try {
-            val vcResult = submitCredentialRequest(activity, context, issuanceService)
+            val vcResult = submitCredentialRequest(activity, context, issuanceService, wuaService)
             withContext(Dispatchers.Main) {
                 isLoadingSetter(false)
                 if (vcResult.isSuccess) {
@@ -458,6 +464,7 @@ private suspend fun handleVpTokenDeepLink(
     context: Context,
     activity: FragmentActivity,
     vpTokenService: VpTokenService,
+    issuanceService: IssuanceService,
     clientId: MutableState<String>,
     requestUri: MutableState<String>,
     responseUri: MutableState<String>,
@@ -492,9 +499,8 @@ private suspend fun handleVpTokenDeepLink(
         // Store the full request for encryption parameters
         authRequest.value = requestObject
 
-        val prefs = getEncryptedPrefs(context, activity)
         val storedCredential = withContext(Dispatchers.IO) {
-            prefs.getString("stored_vc", null).orEmpty()
+            issuanceService.getStoredCredential().orEmpty()
         }
 
         val claims = withContext(Dispatchers.IO) {
@@ -513,10 +519,11 @@ private suspend fun handleVpTokenDeepLink(
 suspend fun submitCredentialRequest(
     activity: FragmentActivity,
     context: Context,
-    issuanceService: IssuanceService
+    issuanceService: IssuanceService,
+    wuaService: WuaService
 ): Result<Pair<String, Map<String, String>>> {
     return try {
-        // Get encrypted preferences (suspend function)
+        // Get encrypted preferences for access token (stored during auth flow)
         val prefs = getEncryptedPrefs(context, activity)
 
         // Access token from preferences
@@ -527,20 +534,17 @@ suspend fun submitCredentialRequest(
             return Result.failure(Exception("❌ Access token is missing!"))
         }
 
-        // Get stored WUA (required for key_attestation header)
-        val storedWua = prefs.getString("stored_wua", null)
+        // Get stored WUA using service method (required for key_attestation header)
+        val storedWua = wuaService.getStoredWua()
         if (storedWua.isNullOrEmpty()) {
             return Result.failure(Exception("❌ WUA not found - wallet not activated!"))
         }
 
-        // Proceed with issuance
+        // Proceed with issuance (credential storage is now handled by issuanceService.requestCredential)
         val nonce = issuanceService.getNonce(accessToken)
         val jwtProof = issuanceService.createJwtProof(nonce, storedWua)
         val storedCredential = issuanceService.requestCredential(accessToken, jwtProof)
         val claims = issuanceService.decodeCredential(storedCredential)
-
-        // Store the credential securely
-        prefs.edit().putString("stored_vc", storedCredential).apply()
 
         // Return success with message and claims
         Result.success("✅ VC stored securely" to claims)
@@ -555,8 +559,8 @@ suspend fun submitCredentialRequest(
 // Function to submit the VP token based on selected user claims
 suspend fun submitVpToken(
     context: Context,
-    activity: FragmentActivity,
     vpTokenService: VpTokenService,
+    issuanceService: IssuanceService,
     selectedClaims: List<Disclosure>,
     responseUri: String,
     clientId: String,
@@ -565,10 +569,8 @@ suspend fun submitVpToken(
     snackbarHostState: SnackbarHostState
 ) {
     try {
-        val prefs = getEncryptedPrefs(context, activity)
-
         val storedCredential = withContext(Dispatchers.IO) {
-            prefs.getString("stored_vc", null).orEmpty()
+            issuanceService.getStoredCredential().orEmpty()
         }
         val vpToken = withContext(Dispatchers.IO) {
             vpTokenService.createVP(storedCredential, selectedClaims, clientId, nonce)

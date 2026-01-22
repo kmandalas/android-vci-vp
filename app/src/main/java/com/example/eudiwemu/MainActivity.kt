@@ -17,7 +17,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
-import com.example.eudiwemu.service.WuaIssuanceService
+import com.example.eudiwemu.service.WiaService
+import com.example.eudiwemu.service.WuaService
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
 import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
@@ -28,7 +29,8 @@ import org.koin.android.ext.android.inject
 class MainActivity : FragmentActivity() {
     private val issuanceService: IssuanceService by inject()
     private val vpTokenService: VpTokenService by inject()
-    private val wuaIssuanceService: WuaIssuanceService by inject()
+    private val wuaService: WuaService by inject()
+    private val wiaService: WiaService by inject()
 
     private val isAuthenticated = mutableStateOf(false)
 
@@ -39,6 +41,9 @@ class MainActivity : FragmentActivity() {
             try {
                 val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
                 val deviceUnlocked = prefs.getBoolean("device_unlocked", false)
+
+                // Initialize WiaService with activity context for encrypted prefs access
+                wiaService.initWithActivity(this@MainActivity)
 
                 isAuthenticated.value = deviceUnlocked
             } catch (e: Exception) {
@@ -65,7 +70,8 @@ class MainActivity : FragmentActivity() {
                         intent = intent,
                         issuanceService = issuanceService,
                         vpTokenService = vpTokenService,
-                        wuaIssuanceService = wuaIssuanceService,
+                        wuaService = wuaService,
+                        wiaService = wiaService,
                         isAuthenticated = isAuthenticated.value,
                     )
                 }
@@ -80,7 +86,8 @@ fun MainNavHost(
     intent: Intent?,
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
-    wuaIssuanceService: WuaIssuanceService,
+    wuaService: WuaService,
+    wiaService: WiaService,
     isAuthenticated: Boolean
 ) {
     val navController = rememberNavController()
@@ -95,7 +102,8 @@ fun MainNavHost(
                 activity = activity,
                 viewModel = viewModel,
                 navController = navController,
-                wuaIssuanceService = wuaIssuanceService
+                wuaService = wuaService,
+                wiaService = wiaService
             )
         }
         composable("wallet_app_screen") {
@@ -105,7 +113,7 @@ fun MainNavHost(
                 context = LocalContext.current,
                 issuanceService = issuanceService,
                 vpTokenService = vpTokenService,
-                wuaIssuanceService = wuaIssuanceService
+                wuaService = wuaService
             )
         }
     }

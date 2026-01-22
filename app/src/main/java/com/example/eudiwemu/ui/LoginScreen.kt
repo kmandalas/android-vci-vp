@@ -20,7 +20,8 @@ import androidx.navigation.NavController
 import com.example.eudiwemu.R
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.security.showBiometricPrompt
-import com.example.eudiwemu.service.WuaIssuanceService
+import com.example.eudiwemu.service.WiaService
+import com.example.eudiwemu.service.WuaService
 import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -34,7 +35,8 @@ fun LoginScreen(
     activity: FragmentActivity,
     viewModel: AuthenticationViewModel,
     navController: NavController,
-    wuaIssuanceService: WuaIssuanceService
+    wuaService: WuaService,
+    wiaService: WiaService
 ) {
 
     val isAuthenticated by viewModel.isAuthenticated
@@ -87,24 +89,47 @@ fun LoginScreen(
                     val prefs = getEncryptedPrefs(activity.applicationContext, activity)
                     prefs.edit().putBoolean("device_unlocked", true).apply()
 
-                    // Check if WUA already exists
-                    val existingWua = prefs.getString("stored_wua", null)
-                    if (existingWua.isNullOrEmpty()) {
+                    // Initialize both services with activity context for encrypted prefs access
+                    wiaService.initWithActivity(activity)
+                    wuaService.initWithActivity(activity)
+
+                    // WIA first (EUDI pattern): Wallet Instance Attestation proves wallet identity to Auth Server
+                    val existingWia = wiaService.getStoredWia()
+                    if (existingWia == null) {
+                        // Request WIA (Wallet Instance Attestation)
+                        loadingMessage = "Obtaining wallet attestation..."
+                        Log.d(TAG, "No valid WIA found, initiating WIA issuance")
+
+                        val wiaResult = withContext(Dispatchers.IO) {
+                            wiaService.issueWia()
+                        }
+
+                        if (wiaResult.isSuccess) {
+                            val wiaResponse = wiaResult.getOrNull()!!
+                            Log.d(TAG, "WIA issued successfully. WIA ID: ${wiaResponse.wiaId}")
+                        } else {
+                            val error = wiaResult.exceptionOrNull()?.message ?: "Unknown error"
+                            Log.e(TAG, "WIA issuance failed: $error")
+                            // Continue anyway - WIA is optional for this PoC
+                        }
+                    } else {
+                        Log.d(TAG, "Valid WIA already exists, skipping issuance")
+                    }
+
+                    // WUA second (EUDI pattern): Wallet Unit Attestation proves key security to Issuer
+                    val existingWua = wuaService.getStoredWua()
+                    if (existingWua == null) {
                         // First time activation - request WUA
                         loadingMessage = "Activating wallet..."
-                        Log.d(TAG, "No WUA found, initiating WUA issuance")
+                        Log.d(TAG, "No valid WUA found, initiating WUA issuance")
 
                         val wuaResult = withContext(Dispatchers.IO) {
-                            wuaIssuanceService.issueWua()
+                            wuaService.issueWua()
                         }
 
                         if (wuaResult.isSuccess) {
                             val wuaResponse = wuaResult.getOrNull()!!
-                            prefs.edit()
-                                .putString("stored_wua", wuaResponse.credential)
-                                .putString("wua_id", wuaResponse.wuaId)
-                                .apply()
-                            Log.d(TAG, "WUA stored successfully. WUA ID: ${wuaResponse.wuaId}")
+                            Log.d(TAG, "WUA issued successfully. WUA ID: ${wuaResponse.wuaId}")
                             snackbarHostState.showSnackbar("Wallet activated successfully")
                         } else {
                             val error = wuaResult.exceptionOrNull()?.message ?: "Unknown error"
@@ -113,7 +138,7 @@ fun LoginScreen(
                             snackbarHostState.showSnackbar("Wallet activation pending: $error")
                         }
                     } else {
-                        Log.d(TAG, "WUA already exists, skipping issuance")
+                        Log.d(TAG, "Valid WUA already exists, skipping issuance")
                     }
 
                     viewModel.authenticateSuccess() // Will trigger nav via LaunchedEffect

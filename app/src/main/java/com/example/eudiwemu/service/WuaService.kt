@@ -1,6 +1,9 @@
 package com.example.eudiwemu.service
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
+import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.WuaCredentialRequest
 import com.example.eudiwemu.dto.WuaCredentialResponse
@@ -10,6 +13,7 @@ import com.example.eudiwemu.dto.WuaProof
 import com.example.eudiwemu.dto.WuaStatusResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
+import com.example.eudiwemu.security.getEncryptedPrefs
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -44,13 +48,30 @@ import java.util.Date
  * 4. Submit proof + key attestation certificate chain
  * 5. Receive and verify WUA credential
  */
-class WuaIssuanceService(
+class WuaService(
     private val client: HttpClient,
-    private val walletKeyManager: WalletKeyManager
+    private val walletKeyManager: WalletKeyManager,
+    private val context: Context
 ) {
     companion object {
         private const val TAG = "WuaIssuanceService"
     }
+
+    // Encrypted SharedPreferences - lazily initialized when activity context is available
+    private var _encryptedPrefs: SharedPreferences? = null
+
+    /**
+     * Initialize encrypted preferences with a FragmentActivity context.
+     * Must be called from an Activity before using storage-related methods.
+     */
+    suspend fun initWithActivity(activity: FragmentActivity) {
+        _encryptedPrefs = getEncryptedPrefs(context, activity)
+    }
+
+    private val encryptedPrefs: SharedPreferences
+        get() = _encryptedPrefs ?: throw IllegalStateException(
+            "WuaService not initialized with Activity. Call initWithActivity() first."
+        )
 
     /**
      * Get a fresh nonce from the Wallet Provider.
@@ -291,6 +312,9 @@ class WuaIssuanceService(
                     return Result.failure(Exception("WUA credential signature verification failed"))
                 }
 
+                // Step 7: Store WUA
+                storeWua(wuaResponse)
+
                 Log.d(TAG, "WUA issuance completed successfully")
             }
 
@@ -311,6 +335,71 @@ class WuaIssuanceService(
             JWKSet.parse(jwksJson)
         } catch (e: Exception) {
             throw RuntimeException("Failed to fetch Wallet Provider JWK Set: ${e.message}")
+        }
+    }
+
+    /**
+     * Store WUA credential in encrypted SharedPreferences.
+     */
+    private fun storeWua(wuaResponse: WuaCredentialResponse) {
+        encryptedPrefs.edit()
+            .putString(AppConfig.STORED_WUA, wuaResponse.credential)
+            .putString(AppConfig.WUA_ID, wuaResponse.wuaId)
+            .apply()
+        Log.d(TAG, "WUA stored successfully. WUA ID: ${wuaResponse.wuaId}")
+    }
+
+    /**
+     * Get stored WUA credential from encrypted SharedPreferences.
+     *
+     * @return The WUA JWT string, or null if not available, expired, or prefs not initialized
+     */
+    fun getStoredWua(): String? {
+        if (_encryptedPrefs == null) {
+            Log.d(TAG, "WuaService not initialized with Activity, cannot get stored WUA")
+            return null
+        }
+
+        val wua = encryptedPrefs.getString(AppConfig.STORED_WUA, null)
+        if (wua.isNullOrEmpty()) {
+            Log.d(TAG, "No stored WUA found")
+            return null
+        }
+
+        if (!isWuaValid(wua)) {
+            Log.d(TAG, "Stored WUA is expired or invalid")
+            return null
+        }
+
+        return wua
+    }
+
+    /**
+     * Check if a WUA credential is valid (not expired).
+     *
+     * @param wuaJwt The WUA JWT to check
+     * @return true if the WUA is valid and not expired
+     */
+    fun isWuaValid(wuaJwt: String? = null): Boolean {
+        val jwt = wuaJwt ?: _encryptedPrefs?.getString(AppConfig.STORED_WUA, null)
+        if (jwt.isNullOrEmpty()) {
+            return false
+        }
+
+        return try {
+            val signedJwt = SignedJWT.parse(jwt)
+            val exp = signedJwt.jwtClaimsSet.expirationTime
+            if (exp == null) {
+                Log.w(TAG, "WUA has no expiration time")
+                false
+            } else {
+                val isValid = exp.after(Date())
+                Log.d(TAG, "WUA expiration check: exp=$exp, isValid=$isValid")
+                isValid
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking WUA validity", e)
+            false
         }
     }
 }
