@@ -47,6 +47,7 @@ import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
+import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,13 +61,15 @@ fun WalletScreen(
     intent: Intent?,
     issuanceService: IssuanceService,
     vpTokenService: VpTokenService,
-    wuaService: WuaService
+    wuaService: WuaService,
+    wiaService: WiaService
 ) {
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
     val responseUri = remember { mutableStateOf("") }
     var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
     var wuaInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
+    var wiaInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
     val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
     val clientName = remember { mutableStateOf("") }
     val logoUri = remember { mutableStateOf("") }
@@ -85,11 +88,12 @@ fun WalletScreen(
     var selectedLabel by remember { mutableStateOf("") }
     var selectedValue by remember { mutableStateOf("") }
 
-    // Load stored credential and WUA on launch
+    // Load stored credential and attestations on launch
     LaunchedEffect(Unit) {
         try {
             // Initialize services with activity context for encrypted prefs access
             wuaService.initWithActivity(activity)
+            wiaService.initWithActivity(activity)
             issuanceService.initWithActivity(activity)
 
             // Load WUA using service method
@@ -99,6 +103,16 @@ fun WalletScreen(
                     wuaInfo = wuaService.decodeWuaCredential(storedWua)
                 } catch (e: Exception) {
                     Log.e("WalletApp", "Error decoding stored WUA", e)
+                }
+            }
+
+            // Load WIA using service method
+            val storedWia = wiaService.getStoredWia()
+            if (!storedWia.isNullOrEmpty()) {
+                try {
+                    wiaInfo = wiaService.decodeWiaCredential(storedWia)
+                } catch (e: Exception) {
+                    Log.e("WalletApp", "Error decoding stored WIA", e)
                 }
             }
 
@@ -157,10 +171,8 @@ fun WalletScreen(
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // WUA Status Card (shown at top if available)
-                wuaInfo?.let {
-                    WuaStatusCard(it)
-                }
+                // Attestation Carousel (WIA and WUA cards)
+                AttestationCarousel(wiaInfo = wiaInfo, wuaInfo = wuaInfo)
 
                 Spacer(modifier = Modifier.height(8.dp))
 

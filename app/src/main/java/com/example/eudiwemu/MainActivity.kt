@@ -113,7 +113,8 @@ fun MainNavHost(
                 context = LocalContext.current,
                 issuanceService = issuanceService,
                 vpTokenService = vpTokenService,
-                wuaService = wuaService
+                wuaService = wuaService,
+                wiaService = wiaService
             )
         }
     }

@@ -343,4 +343,42 @@ class WiaService(
             throw RuntimeException("Failed to fetch Wallet Provider JWK Set: ${e.message}")
         }
     }
+
+    /**
+     * Decode WIA credential claims for display.
+     *
+     * @param wiaJwt The WIA credential JWT
+     * @return Map of claim names to values
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun decodeWiaCredential(wiaJwt: String): Map<String, Any> {
+        Log.d(TAG, "Decoding WIA credential")
+
+        val signedJwt = SignedJWT.parse(wiaJwt)
+        val claims = signedJwt.jwtClaimsSet
+
+        val result = mutableMapOf<String, Any>()
+        result["issuer"] = claims.issuer ?: "unknown"
+        result["client_id"] = claims.subject ?: "unknown"
+        result["issued_at"] = claims.issueTime?.toString() ?: "unknown"
+        result["expires_at"] = claims.expirationTime?.toString() ?: "unknown"
+        claims.expirationTime?.let { result["expires_at_date"] = it }
+
+        // Determine validity status
+        val isValid = claims.expirationTime?.after(Date()) ?: false
+        result["status"] = if (isValid) "active" else "expired"
+
+        // Extract wallet provider info from eudi_wallet_info
+        val walletInfo = claims.getJSONObjectClaim("eudi_wallet_info")
+        if (walletInfo != null) {
+            val generalInfo = walletInfo["general_info"] as? Map<String, Any>
+            if (generalInfo != null) {
+                result["wallet_provider_name"] = generalInfo["wallet_provider_name"] ?: "unknown"
+                result["wallet_solution_id"] = generalInfo["wallet_solution_id"] ?: "unknown"
+            }
+        }
+
+        Log.d(TAG, "Decoded WIA claims: $result")
+        return result
+    }
 }

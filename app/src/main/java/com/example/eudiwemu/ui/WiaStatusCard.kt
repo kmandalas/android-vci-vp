@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,15 +27,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun WuaStatusCard(wuaInfo: Map<String, Any>) {
-    val status = wuaInfo["status"] as? String ?: "active"
-    val wscdType = wuaInfo["wscd_type"] as? String ?: "unknown"
-    val securityLevel = wuaInfo["security_level"] as? String ?: "unknown"
-    val wuaId = wuaInfo["wua_id"] as? String ?: "unknown"
-    val expiresAt = wuaInfo["expires_at_date"] as? java.util.Date
+fun WiaStatusCard(wiaInfo: Map<String, Any>) {
+    val status = wiaInfo["status"] as? String ?: "active"
+    val issuer = wiaInfo["issuer"] as? String ?: "unknown"
+    val clientId = wiaInfo["client_id"] as? String ?: "unknown"
+    val walletProviderName = wiaInfo["wallet_provider_name"] as? String ?: "unknown"
+    val expiresAt = wiaInfo["expires_at_date"] as? java.util.Date
     val expiresAtFormatted = expiresAt?.let {
         java.text.SimpleDateFormat("dd MMM yyyy HH:mm", java.util.Locale.getDefault()).format(it)
-    } ?: wuaInfo["expires_at"] as? String ?: "unknown"
+    } ?: wiaInfo["expires_at"] as? String ?: "unknown"
 
     val isActive = status.lowercase() == "active"
     val statusColor = if (isActive) Color(0xFF4CAF50) else Color(0xFFFF9800)
@@ -66,14 +66,14 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Wallet Attestation",
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Wallet Instance Attestation",
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Unit Attestation",
+                        text = "Instance Attestation",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -97,17 +97,17 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Security details
-            WuaDetailRow("Security Level", formatSecurityLevel(securityLevel))
-            WuaDetailRow("WSCD Type", formatWscdType(wscdType))
-            WuaDetailRow("Expires", expiresAtFormatted)
-            WuaDetailRow("WUA ID", if (wuaId.length > 8) wuaId.take(8) + "..." else wuaId)
+            // WIA details
+            WiaDetailRow("Issuer", formatIssuer(issuer))
+            WiaDetailRow("Client ID", clientId)
+            WiaDetailRow("Provider", walletProviderName)
+            WiaDetailRow("Expires", expiresAtFormatted)
         }
     }
 }
 
 @Composable
-private fun WuaDetailRow(label: String, value: String) {
+private fun WiaDetailRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -127,27 +127,12 @@ private fun WuaDetailRow(label: String, value: String) {
     }
 }
 
-private fun formatWscdType(wscdType: String): String {
-    return when (wscdType.lowercase()) {
-        "strongbox" -> "StrongBox (Hardware)"
-        "tee" -> "TEE (Trusted Execution)"
-        "software" -> "Software"
-        "iso_18045_high" -> "StrongBox (Hardware)"
-        "iso_18045_moderate", "iso_18045_enhanced-basic" -> "TEE (Trusted Execution)"
-        "iso_18045_basic" -> "Software"
-        else -> wscdType.replaceFirstChar { it.uppercase() }
-    }
-}
-
-private fun formatSecurityLevel(securityLevel: String): String {
-    return when (securityLevel.lowercase()) {
-        "strongbox" -> "StrongBox (High)"
-        "trustedenvironment", "tee" -> "TEE (High)"
-        "software" -> "Software (Basic)"
-        "iso_18045_high" -> "ISO 18045 High"
-        "iso_18045_moderate" -> "ISO 18045 Moderate"
-        "iso_18045_enhanced-basic" -> "ISO 18045 Enhanced-Basic"
-        "iso_18045_basic" -> "ISO 18045 Basic"
-        else -> securityLevel.replaceFirstChar { it.uppercase() }
+private fun formatIssuer(issuer: String): String {
+    // Extract host from URL for cleaner display
+    return try {
+        val url = java.net.URL(issuer)
+        "${url.host}${if (url.port != -1) ":${url.port}" else ""}"
+    } catch (e: Exception) {
+        issuer
     }
 }
