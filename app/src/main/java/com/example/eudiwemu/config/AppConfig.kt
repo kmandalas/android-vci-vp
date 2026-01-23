@@ -24,6 +24,9 @@ class AppConfig {
         // Auth server issuer (derived from token URL, used as audience for WIA PoP)
         val AUTH_SERVER_ISSUER: String = AUTH_SERVER_TOKEN_URL.substringBeforeLast("/oauth2/token")
 
+        // PAR endpoint (derived from token URL)
+        val AUTH_SERVER_PAR_URL: String = AUTH_SERVER_TOKEN_URL.replace("/oauth2/token", "/oauth2/par")
+
         // Storage keys for encrypted SharedPreferences
         const val STORED_WIA = "stored_wia"
         const val WIA_ID = "wia_id"
@@ -56,4 +59,3 @@ class AppConfig {
     }
 
 }
-

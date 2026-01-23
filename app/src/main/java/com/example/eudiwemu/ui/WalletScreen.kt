@@ -292,7 +292,63 @@ fun WalletScreen(
     }
 }
 
-fun startAuthorizationFlow(activity: FragmentActivity, context: Context) {
+/**
+ * Starts the authorization flow using PAR (Pushed Authorization Request).
+ *
+ * PAR enables early WIA validation before the user sees the authorization screen,
+ * improving security by validating the wallet instance attestation upfront.
+ *
+ * Flow:
+ * 1. Generate PKCE code challenge
+ * 2. Push authorization parameters to PAR endpoint with WIA headers
+ * 3. Receive request_uri from PAR response
+ * 4. Redirect user to authorization endpoint with request_uri
+ */
+suspend fun startAuthorizationFlowWithPar(
+    activity: FragmentActivity,
+    context: Context,
+    issuanceService: IssuanceService,
+    onError: (String) -> Unit
+) {
+    val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
+
+    // Step 1: Push authorization request to PAR endpoint
+    val parResult = withContext(Dispatchers.IO) {
+        issuanceService.pushAuthorizationRequest(codeChallenge)
+    }
+
+    if (parResult.isFailure) {
+        val errorMessage = parResult.exceptionOrNull()?.message ?: "Unknown PAR error"
+        Log.e("WalletApp", "PAR request failed: $errorMessage")
+        onError("PAR request failed: $errorMessage")
+        return
+    }
+
+    val requestUri = parResult.getOrThrow()
+    Log.d("WalletApp", "PAR success, received request_uri: $requestUri")
+
+    // Step 2: Redirect to authorization endpoint with request_uri
+    // Note: scope is included explicitly as Spring Authorization Server doesn't
+    // propagate PAR-stored scope to the consent page (workaround for framework limitation)
+    val authorizationUri = Uri.Builder()
+        .scheme("http")
+        .encodedAuthority(AppConfig.AUTH_SERVER_HOST)
+        .path("/oauth2/authorize")
+        .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+        .appendQueryParameter("request_uri", requestUri)
+        .appendQueryParameter("scope", AppConfig.SCOPE)
+        .build()
+
+    Log.d("WalletApp", "Redirecting to authorization: $authorizationUri")
+    val intent = Intent(Intent.ACTION_VIEW, authorizationUri)
+    activity.startActivity(intent)
+}
+
+/**
+ * Legacy authorization flow without PAR.
+ * Kept as fallback in case PAR is not supported.
+ */
+fun startAuthorizationFlowLegacy(activity: FragmentActivity, context: Context) {
     val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
 
     val authorizationUri = Uri.Builder()
@@ -325,7 +381,11 @@ suspend fun requestCredential(
         val accessToken = prefs.getString("access_token", null)
 
         if (accessToken.isNullOrEmpty()) {
-            startAuthorizationFlow(activity, context)
+            startAuthorizationFlowWithPar(activity, context, issuanceService) { error ->
+                Log.e("WalletApp", "PAR failed: $error")
+                // Fallback to legacy flow if PAR fails
+                startAuthorizationFlowLegacy(activity, context)
+            }
             onLoadingChanged(false)
         } else {
             val result = submitCredentialRequest(activity, context, issuanceService, wuaService)
@@ -342,7 +402,10 @@ suspend fun requestCredential(
                     Log.w("WalletApp", "Token expired or invalid, clearing and restarting auth")
                     prefs.edit().remove("access_token").apply()
                     snackbarHostState.showSnackbar("Session expired, please authenticate again")
-                    startAuthorizationFlow(activity, context)
+                    startAuthorizationFlowWithPar(activity, context, issuanceService) { error ->
+                        Log.e("WalletApp", "PAR failed during re-auth: $error")
+                        startAuthorizationFlowLegacy(activity, context)
+                    }
                 } else {
                     snackbarHostState.showSnackbar("❌ Error: $errorMsg")
                 }
@@ -356,7 +419,10 @@ suspend fun requestCredential(
         if (isAuthError(errorMsg)) {
             prefs.edit().remove("access_token").apply()
             snackbarHostState.showSnackbar("Session expired, please authenticate again")
-            startAuthorizationFlow(activity, context)
+            startAuthorizationFlowWithPar(activity, context, issuanceService) { error ->
+                Log.e("WalletApp", "PAR failed during error recovery: $error")
+                startAuthorizationFlowLegacy(activity, context)
+            }
         } else {
             snackbarHostState.showSnackbar(
                 message = "❌ Error requesting VC: ${e.message}",

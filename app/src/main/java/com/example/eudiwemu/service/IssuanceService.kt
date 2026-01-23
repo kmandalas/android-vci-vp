@@ -8,6 +8,7 @@ import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
 import com.example.eudiwemu.dto.NonceResponse
+import com.example.eudiwemu.dto.PushedAuthorizationResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
@@ -34,9 +35,11 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -89,6 +92,7 @@ class IssuanceService(
     ): Result<String> {
         return try {
             val tokenUrl = AppConfig.AUTH_SERVER_TOKEN_URL
+            val clientId = AppConfig.CLIENT_ID
 
             val dpopProof = dpopManager.createDPoPProof(
                 httpMethod = "POST",
@@ -102,7 +106,7 @@ class IssuanceService(
                     append("code", code)
                     append("redirect_uri", redirectUri)
                     append("code_verifier", codeVerifier)
-                    append("client_id", AppConfig.CLIENT_ID)
+                    append("client_id", clientId)
                 }
             ) {
                 header("DPoP", dpopProof)
@@ -120,6 +124,57 @@ class IssuanceService(
             Log.d("IssuanceService", "Token type: ${accessTokenResponse.token_type}")
             Result.success(accessTokenResponse.access_token)
         } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Pushes authorization request parameters to PAR endpoint.
+     * Returns the request_uri to use in the authorization redirect.
+     *
+     * PAR (Pushed Authorization Request) enables early WIA validation
+     * before the user sees the authorization screen.
+     */
+    suspend fun pushAuthorizationRequest(
+        codeChallenge: String,
+        codeChallengeMethod: String = "S256"
+    ): Result<String> {
+        return try {
+            val parUrl = AppConfig.AUTH_SERVER_PAR_URL
+            val clientId = AppConfig.CLIENT_ID
+            Log.d(TAG, "Pushing authorization request to PAR endpoint: $parUrl")
+
+            val response = client.submitForm(
+                url = parUrl,
+                formParameters = Parameters.build {
+                    append("response_type", "code")
+                    append("client_id", clientId)
+                    append("scope", AppConfig.SCOPE)
+                    append("redirect_uri", AppConfig.REDIRECT_URI)
+                    append("code_challenge", codeChallenge)
+                    append("code_challenge_method", codeChallengeMethod)
+                }
+            ) {
+                // Add WIA authentication headers if WIA is available
+                wiaService?.getStoredWia()?.let { wia ->
+                    Log.d(TAG, "Adding WIA authentication headers to PAR request")
+                    val popJwt = wiaService.createPopJwt(AppConfig.AUTH_SERVER_ISSUER)
+                    header("OAuth-Client-Attestation", wia)
+                    header("OAuth-Client-Attestation-PoP", popJwt)
+                }
+            }
+
+            if (response.status.isSuccess()) {
+                val parResponse = response.body<PushedAuthorizationResponse>()
+                Log.d(TAG, "PAR success: request_uri=${parResponse.requestUri}, expires_in=${parResponse.expiresIn}")
+                Result.success(parResponse.requestUri)
+            } else {
+                val error = response.bodyAsText()
+                Log.e(TAG, "PAR failed with status ${response.status}: $error")
+                Result.failure(Exception("PAR request failed: $error"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "PAR exception", e)
             Result.failure(e)
         }
     }
