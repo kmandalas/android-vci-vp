@@ -3,6 +3,7 @@ package com.example.eudiwemu.service
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.WiaCredentialRequest
@@ -270,10 +271,10 @@ class WiaService(
      * Store WIA credential in encrypted SharedPreferences.
      */
     private fun storeWia(wiaResponse: WiaCredentialResponse) {
-        encryptedPrefs.edit()
-            .putString(AppConfig.STORED_WIA, wiaResponse.credential)
-            .putString(AppConfig.WIA_ID, wiaResponse.wiaId)
-            .apply()
+        encryptedPrefs.edit {
+            putString(AppConfig.STORED_WIA, wiaResponse.credential)
+            putString(AppConfig.WIA_ID, wiaResponse.wiaId)
+        }
         Log.d(TAG, "WIA stored successfully. WIA ID: ${wiaResponse.wiaId}")
     }
 

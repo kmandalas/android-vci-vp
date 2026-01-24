@@ -2,6 +2,7 @@ package com.example.eudiwemu.ui
 
 import android.util.Log
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.core.content.edit
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -87,7 +88,7 @@ fun LoginScreen(
                     }
 
                     val prefs = getEncryptedPrefs(activity.applicationContext, activity)
-                    prefs.edit().putBoolean("device_unlocked", true).apply()
+                    prefs.edit { putBoolean("device_unlocked", true) }
 
                     // Initialize both services with activity context for encrypted prefs access
                     wiaService.initWithActivity(activity)

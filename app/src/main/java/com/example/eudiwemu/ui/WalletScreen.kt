@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -328,15 +330,13 @@ suspend fun startAuthorizationFlowWithPar(
     Log.d("WalletApp", "PAR success, received request_uri: $requestUri")
 
     // Step 2: Redirect to authorization endpoint with request_uri
-    // Note: scope is included explicitly as Spring Authorization Server doesn't
-    // propagate PAR-stored scope to the consent page (workaround for framework limitation)
+    // Per RFC 9126, only client_id and request_uri are needed - scope comes from PAR storage
     val authorizationUri = Uri.Builder()
         .scheme("http")
         .encodedAuthority(AppConfig.AUTH_SERVER_HOST)
         .path("/oauth2/authorize")
         .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
         .appendQueryParameter("request_uri", requestUri)
-        .appendQueryParameter("scope", AppConfig.SCOPE)
         .build()
 
     Log.d("WalletApp", "Redirecting to authorization: $authorizationUri")
@@ -400,7 +400,7 @@ suspend fun requestCredential(
                 // Check for auth errors (401, expired token, etc.)
                 if (isAuthError(errorMsg)) {
                     Log.w("WalletApp", "Token expired or invalid, clearing and restarting auth")
-                    prefs.edit().remove("access_token").apply()
+                    prefs.edit { remove("access_token") }
                     snackbarHostState.showSnackbar("Session expired, please authenticate again")
                     startAuthorizationFlowWithPar(activity, context, issuanceService) { error ->
                         Log.e("WalletApp", "PAR failed during re-auth: $error")
@@ -417,7 +417,7 @@ suspend fun requestCredential(
         val errorMsg = e.message ?: ""
         val prefs = getEncryptedPrefs(context, activity)
         if (isAuthError(errorMsg)) {
-            prefs.edit().remove("access_token").apply()
+            prefs.edit { remove("access_token") }
             snackbarHostState.showSnackbar("Session expired, please authenticate again")
             startAuthorizationFlowWithPar(activity, context, issuanceService) { error ->
                 Log.e("WalletApp", "PAR failed during error recovery: $error")
@@ -504,7 +504,7 @@ private suspend fun handleOAuthDeepLink(
     if (tokenResult.isSuccess) {
         val accessToken = tokenResult.getOrNull()
         val prefs = getEncryptedPrefs(context, activity)
-        prefs.edit().putString("access_token", accessToken).apply()
+        prefs.edit { putString("access_token", accessToken) }
 
         Log.d("OAuth", "Access token saved!")
 
@@ -670,7 +670,7 @@ suspend fun submitVpToken(
 
                 if (!redirectUri.isNullOrEmpty()) {
                     // Open redirect_uri in browser (EU verifier flow)
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(redirectUri))
+                    val intent = Intent(Intent.ACTION_VIEW, redirectUri.toUri())
                     context.startActivity(intent)
                     snackbarHostState.showSnackbar(
                         message = "✅ Verification successful - opening result",

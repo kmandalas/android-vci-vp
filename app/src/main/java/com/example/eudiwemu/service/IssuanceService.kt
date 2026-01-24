@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
 import android.util.Log
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
@@ -271,9 +272,7 @@ class IssuanceService(
     private fun storeCredential(credential: String, credentialConfigurationId: String) {
         val credentialType = AppConfig.extractCredentialType(credentialConfigurationId)
         val storageKey = AppConfig.getCredentialStorageKey(credentialType)
-        encryptedPrefs.edit()
-            .putString(storageKey, credential)
-            .apply()
+        encryptedPrefs.edit { putString(storageKey, credential) }
         Log.d(TAG, "Credential stored successfully with key: $storageKey")
     }
 
@@ -309,9 +308,7 @@ class IssuanceService(
     fun removeCredential(credentialType: String? = null) {
         val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
         val storageKey = AppConfig.getCredentialStorageKey(type)
-        encryptedPrefs.edit()
-            .remove(storageKey)
-            .apply()
+        encryptedPrefs.edit { remove(storageKey) }
         Log.d(TAG, "Credential removed for type: $type")
     }
 

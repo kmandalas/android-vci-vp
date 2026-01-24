@@ -2,6 +2,7 @@ package com.example.eudiwemu.security
 
 import android.content.Context
 import android.util.Base64
+import androidx.core.content.edit
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -31,7 +32,7 @@ object PkceManager {
 
     private fun saveCodeVerifier(context: Context, codeVerifier: String) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_CODE_VERIFIER, codeVerifier).apply()
+        prefs.edit { putString(KEY_CODE_VERIFIER, codeVerifier) }
     }
 
     private fun generateCodeVerifier(): String {

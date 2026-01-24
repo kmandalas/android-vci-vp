@@ -45,6 +45,10 @@ class VpTokenService(
     private val client: HttpClient,
     private val walletKeyManager: WalletKeyManager
 ) {
+    companion object {
+        private const val TAG = "VpTokenService"
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -87,7 +91,7 @@ class VpTokenService(
             throw SecurityException("Invalid JWT signature - authorization request not trusted")
         }
 
-        Log.d("VpTokenService", "JAR signature verified successfully")
+        Log.d(TAG, "JAR signature verified successfully")
 
         // Compute x509_hash from the certificate and validate against client_id
         val computedHash = computeX509Hash(certificate)
@@ -101,7 +105,7 @@ class VpTokenService(
             throw SecurityException("x509_hash mismatch: computed=$computedHash, expected=$expectedHash")
         }
 
-        Log.d("VpTokenService", "x509_hash validated: $computedHash")
+        Log.d(TAG, "x509_hash validated: $computedHash")
 
         // Extract claims from the JWT payload (already JSON)
         val payloadJson = signedJwt.payload.toString()
@@ -125,7 +129,7 @@ class VpTokenService(
         request: AuthorizationRequestResponse
     ): String {
         try {
-            Log.d("VpTokenService", "response_mode='${request.response_mode}', " +
+            Log.d(TAG, "response_mode='${request.response_mode}', " +
                     "has_jwks=${request.client_metadata?.jwks != null}")
 
             // Per OpenID4VP spec, both direct_post and direct_post.jwt use form-urlencoded
@@ -146,10 +150,10 @@ class VpTokenService(
 
             val responseBody: String = response.body()
 
-            Log.d("VP Verification Response", responseBody)
+            Log.d(TAG, "VP Verification Response: $responseBody")
             return responseBody
         } catch (e: Exception) {
-            Log.e("VpTokenService", "Error sending VP Token to Verifier", e)
+            Log.e(TAG, "Error sending VP Token to Verifier", e)
             throw e
         }
     }
@@ -184,14 +188,14 @@ class VpTokenService(
         // Create payload with vp_token and state
         // For DCQL, vp_token must be a map of credential IDs to tokens
         val credentialId = request.dcql_query.credentials.firstOrNull()?.id ?: "credential"
-        Log.d("VpTokenService", "Using credential ID: $credentialId, state: ${request.state}")
+        Log.d(TAG, "Using credential ID: $credentialId, state: ${request.state}")
 
         // Build JSON payload - vp_token is Map<QueryId, List<VP>>
         // e.g. {"vp_token":{"query_0":["eyJ..."]},"state":"xyz"}
         val stateJson = request.state?.let { ""","state":"$it"""" } ?: ""
         val payloadJson = """{"vp_token":{"$credentialId":["$vpToken"]}$stateJson}"""
 
-        Log.d("VpTokenService", "Encrypted payload structure: vp_token={$credentialId:...}, " +
+        Log.d(TAG, "Encrypted payload structure: vp_token={$credentialId:...}, " +
                 "state=${request.state != null}")
         val payload = Payload(payloadJson)
 
@@ -200,7 +204,7 @@ class VpTokenService(
         val encrypter = ECDHEncrypter(verifierPublicKey)
         jweObject.encrypt(encrypter)
 
-        Log.d("VpTokenService", "VP response encrypted with ECDH-ES + $encMethod")
+        Log.d(TAG, "VP response encrypted with ECDH-ES + $encMethod")
         return jweObject.serialize()
     }
 
