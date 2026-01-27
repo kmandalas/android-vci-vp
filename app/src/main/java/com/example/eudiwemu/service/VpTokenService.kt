@@ -208,6 +208,15 @@ class VpTokenService(
         return jweObject.serialize()
     }
 
+    /**
+     * Extracts disclosures for requested claims with two-level recursive disclosure support.
+     *
+     * When a parent claim is requested (e.g., "credential_holder"), this method includes:
+     * - The parent disclosure itself (contains nested _sd array)
+     * - ALL nested child disclosures (family_name, given_name, birth_date)
+     *
+     * This matches EU Reference Demo behavior where selecting a parent reveals all its children.
+     */
     fun extractRequestedClaims(
         request: AuthorizationRequestResponse,
         storedCredential: String
@@ -223,19 +232,41 @@ class VpTokenService(
         // Validate VCT matches
         val requestedVcts = credentialQuery.meta?.vct_values
         if (requestedVcts != null && existingVct !in requestedVcts) {
-            throw IllegalArgumentException("❌ VCT mismatch: expected one of $requestedVcts, but found '$existingVct'.")
+            throw IllegalArgumentException("❌ VCT mismatch: expected $requestedVcts, found '$existingVct'")
         }
 
-        // Extract claim paths from DCQL (simpler than presentation_definition)
-        val requestedClaimPaths = credentialQuery.claims
+        // Extract requested parent claim names from DCQL paths
+        val requestedParents = credentialQuery.claims
             ?.mapNotNull { it.path.firstOrNull() }
-            ?: emptyList()
+            ?.toSet() ?: emptySet()
+
+        Log.d(TAG, "Requested parent claims: $requestedParents")
 
         val allDisclosures = parseSDJWT(storedCredential)
+        Log.d(TAG, "Available disclosures: ${allDisclosures.map { it.claimName }}")
 
-        return allDisclosures.filter { disclosure ->
-            requestedClaimPaths.any { path -> path == disclosure.claimName }
+        // Mapping of parent -> nested claim names (two-level disclosure structure)
+        val parentToChildren = mapOf(
+            "credential_holder" to setOf("family_name", "given_name", "birth_date"),
+            "competent_institution" to setOf("country_code", "institution_id", "institution_name")
+        )
+
+        // Build set of all claim names to include (parent + all its children)
+        val claimsToInclude = mutableSetOf<String>()
+        for (parent in requestedParents) {
+            claimsToInclude.add(parent)  // Include the parent disclosure
+            parentToChildren[parent]?.let { children ->
+                claimsToInclude.addAll(children)  // Include ALL nested disclosures
+            }
         }
+
+        // Select matching disclosures
+        val selectedDisclosures = allDisclosures.filter { disclosure ->
+            claimsToInclude.contains(disclosure.claimName)
+        }
+
+        Log.d(TAG, "Selected ${selectedDisclosures.size} disclosures: ${selectedDisclosures.map { it.claimName }}")
+        return selectedDisclosures
     }
 
     private fun parseSDJWT(storedCredential: String): List<Disclosure> {

@@ -69,7 +69,7 @@ fun WalletScreen(
     val clientId = remember { mutableStateOf("") }
     val requestUri = remember { mutableStateOf("") }
     val responseUri = remember { mutableStateOf("") }
-    var credentialClaims by remember { mutableStateOf<Map<String, String>?>(null) }
+    var credentialClaims by remember { mutableStateOf<Map<String, Any>?>(null) }
     var wuaInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
     var wiaInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
     val selectedClaims = remember { mutableStateOf<List<Disclosure>?>(null) }
@@ -242,7 +242,7 @@ fun WalletScreen(
 
                 credentialClaims?.let {
                     CredentialCard(
-                        claims = it,
+                        claims = issuanceService.flattenClaimsForDisplay(it),
                         onDelete = {
                             coroutineScope.launch {
                                 try {
@@ -374,7 +374,7 @@ suspend fun requestCredential(
     wuaService: WuaService,
     snackbarHostState: SnackbarHostState,
     onLoadingChanged: (Boolean) -> Unit,
-    onSuccess: (Map<String, String>) -> Unit
+    onSuccess: (Map<String, Any>) -> Unit
 ) {
     try {
         val prefs = getEncryptedPrefs(context, activity)
@@ -461,7 +461,7 @@ suspend fun handleDeepLink(
     authRequest: MutableState<AuthorizationRequestResponse?>,
     responseUri: MutableState<String>,
     isLoadingSetter: (Boolean) -> Unit,
-    setCredentialClaims: (Map<String, String>) -> Unit,
+    setCredentialClaims: (Map<String, Any>) -> Unit,
     showSnackbar: suspend (String) -> Unit
 ) {
     val uri = intent?.data ?: return
@@ -490,7 +490,7 @@ private suspend fun handleOAuthDeepLink(
     issuanceService: IssuanceService,
     wuaService: WuaService,
     isLoadingSetter: (Boolean) -> Unit,
-    setCredentialClaims: (Map<String, String>) -> Unit,
+    setCredentialClaims: (Map<String, Any>) -> Unit,
     showSnackbar: suspend (String) -> Unit
 ) {
     val code = uri.getQueryParameter("code") ?: return
@@ -599,7 +599,7 @@ suspend fun submitCredentialRequest(
     context: Context,
     issuanceService: IssuanceService,
     wuaService: WuaService
-): Result<Pair<String, Map<String, String>>> {
+): Result<Pair<String, Map<String, Any>>> {
     return try {
         // Get encrypted preferences for access token (stored during auth flow)
         val prefs = getEncryptedPrefs(context, activity)

@@ -42,7 +42,10 @@ import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.Date
 
@@ -380,7 +383,16 @@ class IssuanceService(
         }
     }
 
-    fun decodeCredential(sdJwt: String): Map<String, String> {
+    /**
+     * Decodes an SD-JWT credential, extracting disclosed claims.
+     *
+     * With two-level recursive disclosure (EU Reference Demo style):
+     * - Parent disclosures (e.g., credential_holder) contain {"_sd": [...]} - these are containers
+     * - Leaf disclosures (e.g., family_name) contain actual values
+     *
+     * This method returns only the leaf values for display, filtering out parent containers.
+     */
+    fun decodeCredential(sdJwt: String): Map<String, Any> {
         Log.d("WalletApp", "Decoding SD-JWT...")
 
         val parts = sdJwt.split("~")
@@ -388,7 +400,7 @@ class IssuanceService(
 
         Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
 
-        val decodedClaims = mutableMapOf<String, String>()
+        val decodedClaims = mutableMapOf<String, Any>()
 
         for (disclosure in disclosures) {
             try {
@@ -398,9 +410,27 @@ class IssuanceService(
 
                 if (claimData.size >= 3) {
                     val claimName = claimData[1].jsonPrimitive.content
-                    val claimValue = claimData[2].jsonPrimitive.content
-                    decodedClaims[claimName] = claimValue
-                    Log.d("WalletApp", "Decoded Claim: $claimName -> $claimValue")
+                    val claimValue = claimData[2]
+
+                    // Skip parent disclosures that only contain _sd array (these are containers)
+                    if (claimValue is JsonObject && claimValue.containsKey("_sd")) {
+                        Log.d("WalletApp", "Skipping parent container disclosure: $claimName")
+                        continue
+                    }
+
+                    // Handle nested objects (JsonObject) vs primitive values
+                    val parsedValue: Any = if (claimValue is JsonObject) {
+                        claimValue.jsonObject.mapValues { entry ->
+                            when (val v = entry.value) {
+                                is JsonPrimitive -> v.content
+                                else -> v.toString()
+                            }
+                        }
+                    } else {
+                        claimValue.jsonPrimitive.content
+                    }
+                    decodedClaims[claimName] = parsedValue
+                    Log.d("WalletApp", "Decoded Claim: $claimName -> $parsedValue")
                 } else {
                     Log.d("WalletApp", "Malformed disclosure: $decodedJson")
                 }
@@ -410,6 +440,26 @@ class IssuanceService(
         }
 
         return decodedClaims
+    }
+
+    /**
+     * Flattens nested claims for display purposes.
+     * Converts nested Map structures to dot-notation keys.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun flattenClaimsForDisplay(claims: Map<String, Any>): Map<String, String> {
+        val flattened = mutableMapOf<String, String>()
+        for ((key, value) in claims) {
+            if (value is Map<*, *>) {
+                val nested = value as Map<String, Any>
+                for ((nestedKey, nestedValue) in nested) {
+                    flattened["$key.$nestedKey"] = nestedValue.toString()
+                }
+            } else {
+                flattened[key] = value.toString()
+            }
+        }
+        return flattened
     }
 
 
