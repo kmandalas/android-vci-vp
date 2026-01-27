@@ -2,6 +2,19 @@
 Explore how SD-JWTs, OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup.
 Full related article [here](https://dzone.com/articles/verifiable-credentials-spring-boot-android)
 
+<details>
+<summary>🚧 <strong>WIP / Under Construction</strong></summary>
+
+### Current status
+- **Most recent branch:** `wia`
+
+### Follow-up DZone articles
+- [Securing Verifiable Credentials with DPoP (Spring Boot)](https://dzone.com/articles/securing-verifiable-credentials-with-dpop-spring-boot)
+- [HAIP 1.0 – Securing Verifiable Presentations](https://dzone.com/articles/haip-1-0-securing-verifiable-presentations)
+
+</details>
+
+
 ## How to Test
 
 ### SD-JWT Issuance (VCI)
