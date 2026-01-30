@@ -45,12 +45,14 @@ import com.authlete.sd.Disclosure
 import com.example.eudiwemu.QrScannerActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
+import com.example.eudiwemu.dto.CredentialConfiguration
 import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
+import com.example.eudiwemu.util.ClaimMetadataResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,20 +85,49 @@ fun WalletScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var expanded by remember { mutableStateOf(false) }
-    // Map of display label to credential configuration ID
-    val credentialTypes = mapOf(
-        "Portable Document A1 (PDA1)" to "eu.europa.ec.eudi.pda1_sd_jwt_vc"
-    )
+    // Dynamic credential types from issuer metadata (display label -> config ID)
+    var credentialTypes by remember { mutableStateOf(
+        // Fallback hardcoded map
+        mapOf("Portable Document A1 (PDA1)" to "eu.europa.ec.eudi.pda1_sd_jwt_vc")
+    ) }
+    // Full credential configurations from metadata, keyed by config ID
+    var credentialConfigs by remember { mutableStateOf<Map<String, CredentialConfiguration>>(emptyMap()) }
     var selectedLabel by remember { mutableStateOf("") }
     var selectedValue by remember { mutableStateOf("") }
+    // Resolver for claim display metadata (used by CredentialCard and VP flow)
+    var claimResolver by remember { mutableStateOf<ClaimMetadataResolver?>(null) }
+    // Credential display name from metadata
+    var credentialDisplayName by remember { mutableStateOf<String?>(null) }
+    // Resolver for VP claim selection dialog
+    val vpClaimResolver = remember { mutableStateOf<ClaimMetadataResolver?>(null) }
 
-    // Load stored credential and attestations on launch
+    // Load stored credential, attestations, and issuer metadata on launch
     LaunchedEffect(Unit) {
         try {
             // Initialize services with activity context for encrypted prefs access
             wuaService.initWithActivity(activity)
             wiaService.initWithActivity(activity)
             issuanceService.initWithActivity(activity)
+
+            // Fetch issuer metadata for dynamic dropdown
+            try {
+                val metadata = withContext(Dispatchers.IO) {
+                    issuanceService.fetchIssuerMetadata()
+                }
+                val configs = metadata.credential_configurations_supported
+                credentialConfigs = configs
+                // Build dropdown entries from metadata
+                val dynamicTypes = configs.mapNotNull { (configId, config) ->
+                    val displayName = config.display?.firstOrNull()?.name
+                    if (displayName != null) displayName to configId else null
+                }.toMap()
+                if (dynamicTypes.isNotEmpty()) {
+                    credentialTypes = dynamicTypes
+                }
+                Log.d("WalletApp", "Loaded ${configs.size} credential configurations from issuer metadata")
+            } catch (e: Exception) {
+                Log.w("WalletApp", "Failed to fetch issuer metadata, using fallback dropdown", e)
+            }
 
             // Load WUA using service method
             val storedWua = wuaService.getStoredWua()
@@ -118,11 +149,17 @@ fun WalletScreen(
                 }
             }
 
-            // Load VC using service method
+            // Load VC and its metadata using service methods
             val storedCredential = issuanceService.getStoredCredential()
             if (!storedCredential.isNullOrEmpty()) {
                 try {
                     credentialClaims = issuanceService.decodeCredential(storedCredential)
+                    // Load stored claims metadata for CredentialCard display
+                    val storedClaimsMetadata = issuanceService.getStoredClaimsMetadata()
+                    claimResolver = ClaimMetadataResolver.fromNullable(storedClaimsMetadata)
+                    // Load credential display name
+                    val storedDisplay = issuanceService.getStoredCredentialDisplay()
+                    credentialDisplayName = storedDisplay?.firstOrNull()?.name
                 } catch (e: Exception) {
                     Log.e("WalletApp", "Error decoding stored VC", e)
                 }
@@ -150,8 +187,12 @@ fun WalletScreen(
             nonce = nonce,
             authRequest = authRequest,
             responseUri = responseUri,
+            vpClaimResolver = vpClaimResolver,
+            credentialConfigs = credentialConfigs,
             isLoadingSetter = { isLoading = it },
             setCredentialClaims = { credentialClaims = it },
+            setClaimResolver = { claimResolver = it },
+            setCredentialDisplayName = { credentialDisplayName = it },
             showSnackbar = { message ->
                 snackbarHostState.showSnackbar(message)
             }
@@ -229,8 +270,16 @@ fun WalletScreen(
                                     issuanceService = issuanceService,
                                     wuaService = wuaService,
                                     snackbarHostState = snackbarHostState,
+                                    credentialConfig = credentialConfigs[selectedValue],
                                     onLoadingChanged = { isLoading = it },
-                                    onSuccess = { claims -> credentialClaims = claims }
+                                    onSuccess = { claims ->
+                                        credentialClaims = claims
+                                        // Update resolver from stored metadata after issuance
+                                        val storedMetadata = issuanceService.getStoredClaimsMetadata()
+                                        claimResolver = ClaimMetadataResolver.fromNullable(storedMetadata)
+                                        credentialDisplayName = issuanceService.getStoredCredentialDisplay()
+                                            ?.firstOrNull()?.name
+                                    }
                                 )
                             }
                         },
@@ -243,11 +292,15 @@ fun WalletScreen(
                 credentialClaims?.let {
                     CredentialCard(
                         claims = issuanceService.flattenClaimsForDisplay(it),
+                        credentialDisplayName = credentialDisplayName,
+                        resolver = claimResolver,
                         onDelete = {
                             coroutineScope.launch {
                                 try {
                                     issuanceService.removeCredential()
                                     credentialClaims = null
+                                    claimResolver = null
+                                    credentialDisplayName = null
                                     snackbarHostState.showSnackbar("Credential deleted")
                                 } catch (e: Exception) {
                                     Log.e("WalletApp", "Error deleting credential", e)
@@ -275,10 +328,11 @@ fun WalletScreen(
     // Show claim selection dialog when claims are available
     selectedClaims.value?.let { claims ->
         ClaimSelectionDialog(
+            claims = claims,
+            resolver = vpClaimResolver.value,
             clientName = clientName.value,
             logoUri = logoUri.value,
             purpose = purpose.value,
-            claims = claims,
             onDismiss = { selectedClaims.value = null },
             onConfirm = { selected ->
                 coroutineScope.launch {
@@ -373,6 +427,7 @@ suspend fun requestCredential(
     issuanceService: IssuanceService,
     wuaService: WuaService,
     snackbarHostState: SnackbarHostState,
+    credentialConfig: CredentialConfiguration? = null,
     onLoadingChanged: (Boolean) -> Unit,
     onSuccess: (Map<String, Any>) -> Unit
 ) {
@@ -388,7 +443,9 @@ suspend fun requestCredential(
             }
             onLoadingChanged(false)
         } else {
-            val result = submitCredentialRequest(activity, context, issuanceService, wuaService)
+            val result = submitCredentialRequest(
+                activity, context, issuanceService, wuaService, credentialConfig
+            )
 
             onLoadingChanged(false)
             if (result.isSuccess) {
@@ -460,23 +517,29 @@ suspend fun handleDeepLink(
     nonce: MutableState<String>,
     authRequest: MutableState<AuthorizationRequestResponse?>,
     responseUri: MutableState<String>,
+    vpClaimResolver: MutableState<ClaimMetadataResolver?>,
+    credentialConfigs: Map<String, CredentialConfiguration>,
     isLoadingSetter: (Boolean) -> Unit,
     setCredentialClaims: (Map<String, Any>) -> Unit,
+    setClaimResolver: (ClaimMetadataResolver?) -> Unit,
+    setCredentialDisplayName: (String?) -> Unit,
     showSnackbar: suspend (String) -> Unit
 ) {
     val uri = intent?.data ?: return
     when (uri.scheme) {
         "myapp" -> handleOAuthDeepLink(
             uri, context, activity,
-            issuanceService, wuaService, isLoadingSetter,
-            setCredentialClaims, showSnackbar
+            issuanceService, wuaService, credentialConfigs,
+            isLoadingSetter, setCredentialClaims,
+            setClaimResolver, setCredentialDisplayName, showSnackbar
         )
 
         "openid4vp", "haip-vp" -> handleVpTokenDeepLink(
             uri, context, activity,
             vpTokenService, issuanceService, clientId, requestUri,
             responseUri, selectedClaims,
-            clientName, logoUri, purpose, nonce, authRequest
+            clientName, logoUri, purpose, nonce, authRequest,
+            vpClaimResolver
         )
 
         else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
@@ -489,8 +552,11 @@ private suspend fun handleOAuthDeepLink(
     activity: FragmentActivity,
     issuanceService: IssuanceService,
     wuaService: WuaService,
+    credentialConfigs: Map<String, CredentialConfiguration>,
     isLoadingSetter: (Boolean) -> Unit,
     setCredentialClaims: (Map<String, Any>) -> Unit,
+    setClaimResolver: (ClaimMetadataResolver?) -> Unit,
+    setCredentialDisplayName: (String?) -> Unit,
     showSnackbar: suspend (String) -> Unit
 ) {
     val code = uri.getQueryParameter("code") ?: return
@@ -514,12 +580,22 @@ private suspend fun handleOAuthDeepLink(
         }
 
         try {
-            val vcResult = submitCredentialRequest(activity, context, issuanceService, wuaService)
+            // Pass the matching credential configuration for metadata storage
+            val credentialConfig = credentialConfigs[AppConfig.SCOPE]
+            val vcResult = submitCredentialRequest(
+                activity, context, issuanceService, wuaService, credentialConfig
+            )
             withContext(Dispatchers.Main) {
                 isLoadingSetter(false)
                 if (vcResult.isSuccess) {
                     val (message, claims) = vcResult.getOrNull()!!
                     setCredentialClaims(claims)
+                    // Update resolver and display name from stored metadata
+                    val storedMetadata = issuanceService.getStoredClaimsMetadata()
+                    setClaimResolver(ClaimMetadataResolver.fromNullable(storedMetadata))
+                    setCredentialDisplayName(
+                        issuanceService.getStoredCredentialDisplay()?.firstOrNull()?.name
+                    )
                     showSnackbar(message)
                 } else {
                     showSnackbar("❌ Error: ${vcResult.exceptionOrNull()?.message}")
@@ -552,6 +628,7 @@ private suspend fun handleVpTokenDeepLink(
     purpose: MutableState<String>,
     nonce: MutableState<String>,
     authRequest: MutableState<AuthorizationRequestResponse?>,
+    vpClaimResolver: MutableState<ClaimMetadataResolver?>,
 ) {
     val extractedClientId = uri.getQueryParameter("client_id")
     val extractedRequestUri = uri.getQueryParameter("request_uri")
@@ -581,12 +658,16 @@ private suspend fun handleVpTokenDeepLink(
             issuanceService.getStoredCredential().orEmpty()
         }
 
-        val claims = withContext(Dispatchers.IO) {
-            vpTokenService.extractRequestedClaims(requestObject, storedCredential)
+        // Load stored claims metadata for dynamic label resolution
+        val claimsMetadata = issuanceService.getStoredClaimsMetadata()
+
+        val result = withContext(Dispatchers.IO) {
+            vpTokenService.extractRequestedClaims(requestObject, storedCredential, claimsMetadata)
         }
 
         withContext(Dispatchers.Main) {
-            selectedClaims.value = claims
+            selectedClaims.value = result.disclosures
+            vpClaimResolver.value = result.resolver
         }
     } catch (e: Exception) {
         Log.e("WalletApp", "Error handling VP Token flow", e)
@@ -598,7 +679,8 @@ suspend fun submitCredentialRequest(
     activity: FragmentActivity,
     context: Context,
     issuanceService: IssuanceService,
-    wuaService: WuaService
+    wuaService: WuaService,
+    credentialConfig: CredentialConfiguration? = null
 ): Result<Pair<String, Map<String, Any>>> {
     return try {
         // Get encrypted preferences for access token (stored during auth flow)
@@ -618,10 +700,12 @@ suspend fun submitCredentialRequest(
             return Result.failure(Exception("❌ WUA not found - wallet not activated!"))
         }
 
-        // Proceed with issuance (credential storage is now handled by issuanceService.requestCredential)
+        // Proceed with issuance (credential storage + metadata handled by issuanceService)
         val nonce = issuanceService.getNonce(accessToken)
         val jwtProof = issuanceService.createJwtProof(nonce, storedWua)
-        val storedCredential = issuanceService.requestCredential(accessToken, jwtProof)
+        val storedCredential = issuanceService.requestCredential(
+            accessToken, jwtProof, credentialConfig
+        )
         val claims = issuanceService.decodeCredential(storedCredential)
 
         // Return success with message and claims
@@ -629,7 +713,6 @@ suspend fun submitCredentialRequest(
 
     } catch (e: Exception) {
         Log.e("WalletApp", "Error requesting VC", e)
-        // Return failure with the exception message
         Result.failure(e)
     }
 }

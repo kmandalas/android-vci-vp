@@ -8,6 +8,10 @@ import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
+import com.example.eudiwemu.dto.ClaimMetadata
+import com.example.eudiwemu.dto.CredentialConfiguration
+import com.example.eudiwemu.dto.CredentialDisplay
+import com.example.eudiwemu.dto.CredentialIssuerMetadata
 import com.example.eudiwemu.dto.NonceResponse
 import com.example.eudiwemu.dto.PushedAuthorizationResponse
 import com.example.eudiwemu.security.AndroidKeystoreSigner
@@ -41,6 +45,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -52,9 +57,10 @@ import java.util.Date
 class IssuanceService(
     private val client: HttpClient,
     private val wiaService: WiaService? = null,
-    walletKeyManager: WalletKeyManager,
-    private val context: Context
-) {
+    private val context: Context,
+
+    walletKeyManager: WalletKeyManager
+    ) {
     companion object {
         private const val TAG = "IssuanceService"
     }
@@ -77,6 +83,48 @@ class IssuanceService(
         get() = _encryptedPrefs ?: throw IllegalStateException(
             "IssuanceService not initialized with Activity. Call initWithActivity() first."
         )
+
+    /**
+     * Fetches issuer metadata from /.well-known/openid-credential-issuer.
+     * Returns the parsed metadata including credential configurations with claim display info.
+     */
+    suspend fun fetchIssuerMetadata(): CredentialIssuerMetadata {
+        val url = "${AppConfig.ISSUER_URL}/.well-known/openid-credential-issuer"
+        val response: HttpResponse = client.get(url)
+        return response.body()
+    }
+
+    /**
+     * Get stored claims metadata for a credential type from encrypted SharedPreferences.
+     */
+    fun getStoredClaimsMetadata(credentialType: String? = null): List<ClaimMetadata>? {
+        if (_encryptedPrefs == null) return null
+        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
+        val storageKey = AppConfig.getClaimsMetadataStorageKey(type)
+        val metadataJson = encryptedPrefs.getString(storageKey, null) ?: return null
+        return try {
+            json.decodeFromString(ListSerializer(ClaimMetadata.serializer()), metadataJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse stored claims metadata", e)
+            null
+        }
+    }
+
+    /**
+     * Get stored credential display metadata for a credential type.
+     */
+    fun getStoredCredentialDisplay(credentialType: String? = null): List<CredentialDisplay>? {
+        if (_encryptedPrefs == null) return null
+        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
+        val storageKey = AppConfig.getCredentialDisplayStorageKey(type)
+        val displayJson = encryptedPrefs.getString(storageKey, null) ?: return null
+        return try {
+            json.decodeFromString(ListSerializer(CredentialDisplay.serializer()), displayJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse stored credential display", e)
+            null
+        }
+    }
 
     @Deprecated("replaced client_credentials with authorization_code flow")
     suspend fun obtainAccessToken(): AccessTokenResponse {
@@ -232,7 +280,11 @@ class IssuanceService(
         return signedJWT.serialize()
     }
 
-    suspend fun requestCredential(accessToken: String, jwtProof: String): String {
+    suspend fun requestCredential(
+        accessToken: String,
+        jwtProof: String,
+        credentialConfig: CredentialConfiguration? = null
+    ): String {
         val credentialUrl = "${AppConfig.ISSUER_URL}/credential"
 
         val dpopProof = dpopManager.createDPoPProof(
@@ -261,9 +313,9 @@ class IssuanceService(
         val jsonResponse: Map<String, String> = response.body()
         val credential = jsonResponse["credential"] ?: throw Exception("Failed to request credential")
 
-        // Verify and store the credential
+        // Verify and store the credential (with optional metadata)
         verifyCredential(credential)
-        storeCredential(credential, AppConfig.SCOPE)
+        storeCredential(credential, AppConfig.SCOPE, credentialConfig)
 
         return credential
     }
@@ -271,11 +323,32 @@ class IssuanceService(
     /**
      * Store credential in encrypted SharedPreferences.
      * Uses credential type as part of the key for multi-credential support.
+     * Optionally stores claim metadata and display info from the credential configuration.
      */
-    private fun storeCredential(credential: String, credentialConfigurationId: String) {
+    fun storeCredential(
+        credential: String,
+        credentialConfigurationId: String,
+        credentialConfig: CredentialConfiguration? = null
+    ) {
         val credentialType = AppConfig.extractCredentialType(credentialConfigurationId)
         val storageKey = AppConfig.getCredentialStorageKey(credentialType)
-        encryptedPrefs.edit { putString(storageKey, credential) }
+        encryptedPrefs.edit {
+            putString(storageKey, credential)
+            if (credentialConfig?.claims != null) {
+                val claimsJson = json.encodeToString(
+                    ListSerializer(ClaimMetadata.serializer()),
+                    credentialConfig.claims!!
+                )
+                putString(AppConfig.getClaimsMetadataStorageKey(credentialType), claimsJson)
+            }
+            if (credentialConfig?.display != null) {
+                val displayJson = json.encodeToString(
+                    ListSerializer(CredentialDisplay.serializer()),
+                    credentialConfig.display!!
+                )
+                putString(AppConfig.getCredentialDisplayStorageKey(credentialType), displayJson)
+            }
+        }
         Log.d(TAG, "Credential stored successfully with key: $storageKey")
     }
 
@@ -311,8 +384,12 @@ class IssuanceService(
     fun removeCredential(credentialType: String? = null) {
         val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
         val storageKey = AppConfig.getCredentialStorageKey(type)
-        encryptedPrefs.edit { remove(storageKey) }
-        Log.d(TAG, "Credential removed for type: $type")
+        encryptedPrefs.edit {
+            remove(storageKey)
+            remove(AppConfig.getClaimsMetadataStorageKey(type))
+            remove(AppConfig.getCredentialDisplayStorageKey(type))
+        }
+        Log.d(TAG, "Credential and metadata removed for type: $type")
     }
 
     private suspend fun verifyCredential(sdJwt: String) {

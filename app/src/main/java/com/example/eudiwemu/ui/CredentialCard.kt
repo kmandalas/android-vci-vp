@@ -1,7 +1,6 @@
 package com.example.eudiwemu.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,11 +31,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.eudiwemu.util.ClaimMetadataResolver
 
 /**
- * Human-readable labels for claim fields.
+ * Fallback hardcoded labels used when no issuer metadata is available.
  */
-private val claimLabels = mapOf(
+private val fallbackClaimLabels = mapOf(
     "family_name" to "Family Name",
     "given_name" to "Given Name",
     "birth_date" to "Birth Date",
@@ -47,18 +46,19 @@ private val claimLabels = mapOf(
     "company" to "Company"
 )
 
-/**
- * Grouping of nested claims under their parent categories.
- */
-private val claimGroups = mapOf(
+private val fallbackClaimGroups = mapOf(
     "Credential Holder" to listOf("family_name", "given_name", "birth_date"),
     "Competent Institution" to listOf("country_code", "institution_id", "institution_name")
 )
 
 /**
- * Icons for each group.
+ * Icons for known group names. Metadata doesn't include icons,
+ * so these remain convention-based.
  */
 private val groupIcons = mapOf(
+    "credential_holder" to Icons.Default.Person,
+    "competent_institution" to Icons.Default.Place,
+    // Fallback display-name keys
     "Credential Holder" to Icons.Default.Person,
     "Competent Institution" to Icons.Default.Place
 )
@@ -66,6 +66,8 @@ private val groupIcons = mapOf(
 @Composable
 fun CredentialCard(
     claims: Map<String, String>,
+    credentialDisplayName: String? = null,
+    resolver: ClaimMetadataResolver? = null,
     onDelete: (() -> Unit)? = null
 ) {
     Card(
@@ -96,7 +98,7 @@ fun CredentialCard(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "PDA1 Credential",
+                        text = credentialDisplayName ?: "PDA1 Credential",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -104,30 +106,66 @@ fun CredentialCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Display grouped claims
-                claimGroups.forEach { (groupName, groupClaims) ->
-                    val hasClaimsInGroup = groupClaims.any { claims.containsKey(it) }
-                    if (hasClaimsInGroup) {
-                        ClaimGroupSection(
-                            groupName = groupName,
-                            icon = groupIcons[groupName],
-                            claims = claims,
-                            claimKeys = groupClaims
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                if (resolver != null) {
+                    // Dynamic grouping from metadata
+                    val groups = resolver.groupByParent()
+                    groups.forEach { (parentName, childMetadata) ->
+                        val childKeys = childMetadata.mapNotNull { it.path.lastOrNull() }
+                        val hasClaimsInGroup = childKeys.any { claims.containsKey(it) }
+                        if (hasClaimsInGroup) {
+                            val groupDisplayName = parentName.split("_")
+                                .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                            ClaimGroupSection(
+                                groupName = groupDisplayName,
+                                icon = groupIcons[parentName],
+                                claims = claims,
+                                claimKeys = childKeys,
+                                resolver = resolver
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
                     }
-                }
 
-                // Display any remaining claims not in groups
-                val groupedKeys = claimGroups.values.flatten().toSet()
-                val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
-                if (remainingClaims.isNotEmpty()) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    remainingClaims.forEach { (key, value) ->
-                        ClaimRow(
-                            label = claimLabels[key] ?: key,
-                            value = value
-                        )
+                    // Display any remaining claims not in metadata groups
+                    val groupedKeys = groups.values.flatten()
+                        .mapNotNull { it.path.lastOrNull() }.toSet()
+                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                    if (remainingClaims.isNotEmpty()) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        remainingClaims.forEach { (key, value) ->
+                            ClaimRow(
+                                label = resolver.getDisplayNameByClaimName(key),
+                                value = value
+                            )
+                        }
+                    }
+                } else {
+                    // Fallback: use hardcoded groups
+                    fallbackClaimGroups.forEach { (groupName, groupClaims) ->
+                        val hasClaimsInGroup = groupClaims.any { claims.containsKey(it) }
+                        if (hasClaimsInGroup) {
+                            ClaimGroupSection(
+                                groupName = groupName,
+                                icon = groupIcons[groupName],
+                                claims = claims,
+                                claimKeys = groupClaims,
+                                resolver = null
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+
+                    // Display any remaining claims not in groups
+                    val groupedKeys = fallbackClaimGroups.values.flatten().toSet()
+                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                    if (remainingClaims.isNotEmpty()) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        remainingClaims.forEach { (key, value) ->
+                            ClaimRow(
+                                label = fallbackClaimLabels[key] ?: key,
+                                value = value
+                            )
+                        }
                     }
                 }
             }
@@ -153,7 +191,8 @@ private fun ClaimGroupSection(
     groupName: String,
     icon: ImageVector?,
     claims: Map<String, String>,
-    claimKeys: List<String>
+    claimKeys: List<String>,
+    resolver: ClaimMetadataResolver?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -186,8 +225,13 @@ private fun ClaimGroupSection(
             // Claims in this group
             claimKeys.forEach { key ->
                 claims[key]?.let { value ->
+                    val label = if (resolver != null) {
+                        resolver.getDisplayNameByClaimName(key)
+                    } else {
+                        fallbackClaimLabels[key] ?: key
+                    }
                     ClaimRow(
-                        label = claimLabels[key] ?: key,
+                        label = label,
                         value = value
                     )
                 }
@@ -218,4 +262,3 @@ private fun ClaimRow(label: String, value: String) {
         )
     }
 }
-

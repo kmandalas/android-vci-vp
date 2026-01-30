@@ -5,6 +5,8 @@ import com.authlete.sd.Disclosure
 import com.authlete.sd.SDJWT
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
+import com.example.eudiwemu.dto.ClaimMetadata
+import com.example.eudiwemu.util.ClaimMetadataResolver
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.WalletKeyManager
 import com.nimbusds.jose.EncryptionMethod
@@ -48,6 +50,11 @@ class VpTokenService(
     companion object {
         private const val TAG = "VpTokenService"
     }
+
+    data class RequestedClaimsResult(
+        val disclosures: List<Disclosure>,
+        val resolver: ClaimMetadataResolver?
+    )
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -215,12 +222,14 @@ class VpTokenService(
      * - The parent disclosure itself (contains nested _sd array)
      * - ALL nested child disclosures (family_name, given_name, birth_date)
      *
-     * This matches EU Reference Demo behavior where selecting a parent reveals all its children.
+     * Uses ClaimMetadataResolver when available for dynamic parent-to-children mapping,
+     * falling back to hardcoded maps if no metadata is stored.
      */
     fun extractRequestedClaims(
         request: AuthorizationRequestResponse,
-        storedCredential: String
-    ): List<Disclosure> {
+        storedCredential: String,
+        claimsMetadata: List<ClaimMetadata>? = null
+    ): RequestedClaimsResult {
         val jwtPart = storedCredential.substringBefore("~")
         val signedJwt = SignedJWT.parse(jwtPart)
         val existingVct = signedJwt.jwtClaimsSet.getStringClaim("vct")
@@ -245,11 +254,21 @@ class VpTokenService(
         val allDisclosures = parseSDJWT(storedCredential)
         Log.d(TAG, "Available disclosures: ${allDisclosures.map { it.claimName }}")
 
-        // Mapping of parent -> nested claim names (two-level disclosure structure)
-        val parentToChildren = mapOf(
-            "credential_holder" to setOf("family_name", "given_name", "birth_date"),
-            "competent_institution" to setOf("country_code", "institution_id", "institution_name")
-        )
+        val resolver = ClaimMetadataResolver.fromNullable(claimsMetadata)
+
+        // Build parent -> children mapping from metadata, or fall back to hardcoded
+        val parentToChildren: Map<String, Set<String>> = if (resolver != null) {
+            val groups = resolver.groupByParent()
+            groups.mapValues { (_, children) ->
+                children.mapNotNull { it.path.lastOrNull() }.toSet()
+            }
+        } else {
+            Log.w(TAG, "No claims metadata available, using hardcoded parent-to-children mapping")
+            mapOf(
+                "credential_holder" to setOf("family_name", "given_name", "birth_date"),
+                "competent_institution" to setOf("country_code", "institution_id", "institution_name")
+            )
+        }
 
         // Build set of all claim names to include (parent + all its children)
         val claimsToInclude = mutableSetOf<String>()
@@ -266,7 +285,7 @@ class VpTokenService(
         }
 
         Log.d(TAG, "Selected ${selectedDisclosures.size} disclosures: ${selectedDisclosures.map { it.claimName }}")
-        return selectedDisclosures
+        return RequestedClaimsResult(selectedDisclosures, resolver)
     }
 
     private fun parseSDJWT(storedCredential: String): List<Disclosure> {

@@ -44,7 +44,7 @@ val appModule = module {
 
     // Define single instances of your services
     single { WiaService(get(), get(), androidContext()) }
-    single { IssuanceService(get(), get(), get(), androidContext()) }
+    single { IssuanceService(get(), get(), androidContext(), get()) }
     single { VpTokenService(get(), get()) }
     single { WuaService(get(), get(), androidContext()) }
 }

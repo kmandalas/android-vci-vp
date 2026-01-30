@@ -54,6 +54,22 @@ class AppConfig {
             return regex.find(scope)?.groupValues?.get(1) ?: scope
         }
 
+        /**
+         * Get storage key for claims metadata of a credential type.
+         * E.g., "pda1" -> "stored_vc_pda1_claims_metadata"
+         */
+        fun getClaimsMetadataStorageKey(credentialType: String): String {
+            return "${STORED_VC_PREFIX}${credentialType}_claims_metadata"
+        }
+
+        /**
+         * Get storage key for credential display metadata of a credential type.
+         * E.g., "pda1" -> "stored_vc_pda1_display"
+         */
+        fun getCredentialDisplayStorageKey(credentialType: String): String {
+            return "${STORED_VC_PREFIX}${credentialType}_display"
+        }
+
         // Default PDA1 credential storage key (for convenience)
         val STORED_VC_PDA1: String get() = getCredentialStorageKey(extractCredentialType(SCOPE))
     }
