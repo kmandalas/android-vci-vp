@@ -19,19 +19,6 @@ Related articles:
 | **DCQL** | Parses Digital Credentials Query Language requests for selective disclosure |
 | **dc+sd-jwt** | Issues and presents credentials in HAIP-compliant format with x5c header |
 
-<details>
-<summary>🚧 <strong>WIP / Under Construction</strong></summary>
-
-### Current status
-- **Most recent branch:** `wia`
-
-### Follow-up DZone articles
-- [Securing Verifiable Credentials with DPoP (Spring Boot)](https://dzone.com/articles/securing-verifiable-credentials-with-dpop-spring-boot)
-- [HAIP 1.0 – Securing Verifiable Presentations](https://dzone.com/articles/haip-1-0-securing-verifiable-presentations)
-
-</details>
-
-
 ## How to Test
 
 ### Backend Services
