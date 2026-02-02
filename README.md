@@ -5,6 +5,7 @@ Related articles:
 - [Verifiable Credentials with Spring Boot & Android](https://dzone.com/articles/verifiable-credentials-spring-boot-android)
 - [Securing Verifiable Credentials with DPoP](https://dzone.com/articles/securing-verifiable-credentials-with-dpop-spring-boot)
 - [HAIP 1.0: Securing Verifiable Presentations](https://dzone.com/articles/haip-1-0-securing-verifiable-presentations)
+- More articles covering WIA, WUA, and Token Status List coming soon.
 
 ## Features
 
@@ -63,6 +64,8 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 ### Demo Video
 
 You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/cxIgyTR8s6w).
+
+_Note: The video predates recent UI additions (WIA/WUA attestation cards, PDA1 display enhancements). An updated recording is planned._
 
 ---
 <details>
