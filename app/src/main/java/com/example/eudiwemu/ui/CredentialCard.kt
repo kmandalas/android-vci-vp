@@ -1,28 +1,75 @@
 package com.example.eudiwemu.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.eudiwemu.util.ClaimMetadataResolver
+
+/**
+ * Fallback hardcoded labels used when no issuer metadata is available.
+ */
+private val fallbackClaimLabels = mapOf(
+    "family_name" to "Family Name",
+    "given_name" to "Given Name",
+    "birth_date" to "Birth Date",
+    "country_code" to "Country",
+    "institution_id" to "Institution ID",
+    "institution_name" to "Institution Name",
+    "company" to "Company"
+)
+
+private val fallbackClaimGroups = mapOf(
+    "Credential Holder" to listOf("family_name", "given_name", "birth_date"),
+    "Competent Institution" to listOf("country_code", "institution_id", "institution_name")
+)
+
+/**
+ * Icons for known group names. Metadata doesn't include icons,
+ * so these remain convention-based.
+ */
+private val groupIcons = mapOf(
+    "credential_holder" to Icons.Default.Person,
+    "competent_institution" to Icons.Default.Place,
+    // Fallback display-name keys
+    "Credential Holder" to Icons.Default.Person,
+    "Competent Institution" to Icons.Default.Place
+)
 
 @Composable
-fun CredentialCard(claims: Map<String, String>) {
+fun CredentialCard(
+    claims: Map<String, String>,
+    credentialDisplayName: String? = null,
+    resolver: ClaimMetadataResolver? = null,
+    onDelete: (() -> Unit)? = null
+) {
     Card(
         modifier = Modifier
             .padding(16.dp)
@@ -31,31 +78,187 @@ fun CredentialCard(claims: Map<String, String>) {
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
     ) {
-        Column(
-            modifier = Modifier
-                .padding(20.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Image(
-                imageVector = Icons.Default.AccountBox,
-                contentDescription = "Profile Icon",
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(
                 modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                claims.forEach { (key, value) ->
-                    Text(
-                        text = "$key: $value",
-                        style = MaterialTheme.typography.bodyLarge
+                    .padding(20.dp)
+                    .fillMaxWidth()
+            ) {
+                // Header with icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Image(
+                        imageVector = Icons.Default.AccountBox,
+                        contentDescription = "Credential Icon",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = credentialDisplayName ?: "PDA1 Credential",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (resolver != null) {
+                    // Dynamic grouping from metadata
+                    val groups = resolver.groupByParent()
+                    groups.forEach { (parentName, childMetadata) ->
+                        val childKeys = childMetadata.mapNotNull { it.path.lastOrNull() }
+                        val hasClaimsInGroup = childKeys.any { claims.containsKey(it) }
+                        if (hasClaimsInGroup) {
+                            val groupDisplayName = parentName.split("_")
+                                .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                            ClaimGroupSection(
+                                groupName = groupDisplayName,
+                                icon = groupIcons[parentName],
+                                claims = claims,
+                                claimKeys = childKeys,
+                                resolver = resolver
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+
+                    // Display any remaining claims not in metadata groups
+                    val groupedKeys = groups.values.flatten()
+                        .mapNotNull { it.path.lastOrNull() }.toSet()
+                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                    if (remainingClaims.isNotEmpty()) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        remainingClaims.forEach { (key, value) ->
+                            ClaimRow(
+                                label = resolver.getDisplayNameByClaimName(key),
+                                value = value
+                            )
+                        }
+                    }
+                } else {
+                    // Fallback: use hardcoded groups
+                    fallbackClaimGroups.forEach { (groupName, groupClaims) ->
+                        val hasClaimsInGroup = groupClaims.any { claims.containsKey(it) }
+                        if (hasClaimsInGroup) {
+                            ClaimGroupSection(
+                                groupName = groupName,
+                                icon = groupIcons[groupName],
+                                claims = claims,
+                                claimKeys = groupClaims,
+                                resolver = null
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+
+                    // Display any remaining claims not in groups
+                    val groupedKeys = fallbackClaimGroups.values.flatten().toSet()
+                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                    if (remainingClaims.isNotEmpty()) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                        remainingClaims.forEach { (key, value) ->
+                            ClaimRow(
+                                label = fallbackClaimLabels[key] ?: key,
+                                value = value
+                            )
+                        }
+                    }
+                }
+            }
+
+            onDelete?.let { deleteAction ->
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Delete credential",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .size(24.dp)
+                        .clickable { deleteAction() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClaimGroupSection(
+    groupName: String,
+    icon: ImageVector?,
+    claims: Map<String, String>,
+    claimKeys: List<String>,
+    resolver: ClaimMetadataResolver?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Group header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                icon?.let {
+                    Icon(
+                        imageVector = it,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = groupName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Claims in this group
+            claimKeys.forEach { key ->
+                claims[key]?.let { value ->
+                    val label = if (resolver != null) {
+                        resolver.getDisplayNameByClaimName(key)
+                    } else {
+                        fallbackClaimLabels[key] ?: key
+                    }
+                    ClaimRow(
+                        label = label,
+                        value = value
+                    )
                 }
             }
         }
     }
 }
 
+@Composable
+private fun ClaimRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.4f)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(0.6f)
+        )
+    }
+}

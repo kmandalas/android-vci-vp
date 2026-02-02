@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
@@ -20,10 +21,27 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.authlete.sd.Disclosure
+import com.example.eudiwemu.util.ClaimMetadataResolver
+
+/**
+ * Fallback hardcoded labels used when no issuer metadata is available.
+ */
+private val fallbackParentClaimLabels = mapOf(
+    "credential_holder" to "Credential Holder (name, birth date)",
+    "competent_institution" to "Competent Institution (country, ID, name)"
+)
+
+private val fallbackParentClaimNames = setOf("credential_holder", "competent_institution")
+
+private val fallbackParentToChildren = mapOf(
+    "credential_holder" to setOf("family_name", "given_name", "birth_date"),
+    "competent_institution" to setOf("country_code", "institution_id", "institution_name")
+)
 
 @Composable
 fun ClaimSelectionDialog(
     claims: List<Disclosure>,
+    resolver: ClaimMetadataResolver?,
     clientName: String,
     logoUri: String,
     purpose: String,
@@ -31,6 +49,12 @@ fun ClaimSelectionDialog(
     onConfirm: (List<Disclosure>) -> Unit
 ) {
     val selectedClaims = remember { mutableStateListOf<Disclosure>() }
+
+    // Determine parent claim names from resolver or fallback
+    val parentClaimNames = resolver?.getParentNames() ?: fallbackParentClaimNames
+
+    // Filter to show only parent claims
+    val parentClaims = claims.filter { parentClaimNames.contains(it.claimName) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -58,7 +82,7 @@ fun ClaimSelectionDialog(
         },
         text = {
             Column {
-                claims.forEach { claim ->
+                parentClaims.forEach { claim ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = selectedClaims.contains(claim),
@@ -67,17 +91,46 @@ fun ClaimSelectionDialog(
                                 else selectedClaims.remove(claim)
                             }
                         )
-                        Text(text = claim.claimName)
+                        Column(modifier = Modifier.padding(start = 4.dp)) {
+                            val label = if (resolver != null) {
+                                resolver.getParentDisplayLabel(claim.claimName)
+                            } else {
+                                fallbackParentClaimLabels[claim.claimName] ?: claim.claimName
+                            }
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(selectedClaims) }) { Text("Confirm") }
+            Button(onClick = {
+                // Expand selected parent disclosures to include all their children
+                val selectedParentNames = selectedClaims.mapNotNull { it.claimName }.toSet()
+
+                val childNamesToInclude = if (resolver != null) {
+                    selectedParentNames.flatMap { resolver.getChildClaimNames(it) }.toSet()
+                } else {
+                    selectedParentNames
+                        .flatMap { fallbackParentToChildren[it] ?: emptySet() }
+                        .toSet()
+                }
+
+                // Include both selected parents AND all their children from the full claims list
+                val expandedSelection = claims.filter { disclosure ->
+                    selectedParentNames.contains(disclosure.claimName) ||
+                    childNamesToInclude.contains(disclosure.claimName)
+                }
+
+                onConfirm(expandedSelection)
+            }) { Text("Confirm") }
         },
         dismissButton = {
             Button(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
-
