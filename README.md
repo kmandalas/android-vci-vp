@@ -61,9 +61,11 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 
 ---
 
-### Demo Video
+### 🎬 Demo Video
 
-You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/S3_SZg_Cb5s).
+📱 Watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/S3_SZg_Cb5s).
+
+🌐 Watch the interop test demo with the EU Reference Verifier on [YouTube](https://youtu.be/W2Ma6QF-G-Y).
 
 ---
 <details>
