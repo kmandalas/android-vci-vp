@@ -63,9 +63,7 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 
 ### Demo Video
 
-You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/cxIgyTR8s6w).
-
-_Note: The video predates recent UI additions (WIA/WUA attestation cards, PDA1 display enhancements). An updated recording is planned._
+You can watch a screen recording that walks through the entire flow on [YouTube](https://youtube.com/shorts/S3_SZg_Cb5s).
 
 ---
 <details>
