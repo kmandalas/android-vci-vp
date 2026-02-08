@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Delete
@@ -28,9 +29,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.util.ClaimMetadataResolver
 
 /**
@@ -67,6 +71,7 @@ private val groupIcons = mapOf(
 fun CredentialCard(
     claims: Map<String, String>,
     credentialDisplayName: String? = null,
+    credentialFormat: String? = null,
     resolver: ClaimMetadataResolver? = null,
     onDelete: (() -> Unit)? = null
 ) {
@@ -97,11 +102,29 @@ fun CredentialCard(
                             .clip(CircleShape)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = credentialDisplayName ?: "PDA1 Credential",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = credentialDisplayName ?: "PDA1 Credential",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        credentialFormat?.let { format ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val (label, color) = when (format) {
+                                AppConfig.FORMAT_MSO_MDOC -> "mDoc" to Color(0xFF6F42C1)
+                                else -> "SD-JWT" to Color(0xFF28A745)
+                            }
+                            Text(
+                                text = label,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .background(color, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

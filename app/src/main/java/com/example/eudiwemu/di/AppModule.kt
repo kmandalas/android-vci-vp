@@ -15,7 +15,9 @@ import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 import org.koin.android.ext.koin.androidContext
+import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
 val appModule = module {
@@ -47,4 +49,6 @@ val appModule = module {
     single { IssuanceService(get(), get(), androidContext(), get()) }
     single { VpTokenService(get(), get()) }
     single { WuaService(get(), get(), androidContext()) }
+
+    viewModel { WalletViewModel(get(), get(), get(), get()) }
 }

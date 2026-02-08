@@ -28,16 +28,16 @@ android {
         debug {
             isMinifyEnabled = false
             // Uses LOCAL_IP from gradle.properties
-//            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
-//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
-//            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
-//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
+            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
 
             // Uses render.com backend
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
-            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
+//            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
+//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
+//            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
         }
         release {
             isMinifyEnabled = true
@@ -69,6 +69,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -110,6 +113,9 @@ dependencies {
     // Authlete SD-JWT
     implementation("com.authlete:sd-jwt:1.5")
 
+    // Authlete CBOR (for mDoc support)
+    implementation("com.authlete:cbor:1.16")
+
     //QR Scanning
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
@@ -118,6 +124,7 @@ dependencies {
 
     // Other
     implementation ("io.insert-koin:koin-android:3.5.0")
+    implementation("io.insert-koin:koin-androidx-compose:3.5.0")
     implementation ("androidx.navigation:navigation-compose:2.4.0-alpha10")
     implementation("io.coil-kt:coil-compose:2.7.0")
 }

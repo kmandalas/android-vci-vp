@@ -134,3 +134,75 @@ fun ClaimSelectionDialog(
         }
     )
 }
+
+/**
+ * Claim selection dialog for mDoc credentials.
+ * Uses string-based claim names (elementIdentifiers) instead of Disclosure objects.
+ */
+@Composable
+fun MDocClaimSelectionDialog(
+    claimNames: List<String>,
+    clientName: String,
+    logoUri: String,
+    purpose: String,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit
+) {
+    val selectedNames = remember { mutableStateListOf<String>() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                AsyncImage(
+                    model = logoUri,
+                    contentDescription = "Client Logo",
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = clientName, style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = purpose,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Select Claims to Share (mDoc)", style = MaterialTheme.typography.bodyLarge)
+            }
+        },
+        text = {
+            Column {
+                claimNames.forEach { claimName ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = selectedNames.contains(claimName),
+                            onCheckedChange = { isChecked ->
+                                if (isChecked) selectedNames.add(claimName)
+                                else selectedNames.remove(claimName)
+                            }
+                        )
+                        Column(modifier = Modifier.padding(start = 4.dp)) {
+                            val label = fallbackParentClaimLabels[claimName] ?: claimName
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                onConfirm(selectedNames.toList())
+            }) { Text("Confirm") }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}

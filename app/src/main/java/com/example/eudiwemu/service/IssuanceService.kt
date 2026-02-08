@@ -2,7 +2,6 @@ package com.example.eudiwemu.service
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Base64
 import android.util.Log
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
@@ -18,19 +17,13 @@ import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
 import com.example.eudiwemu.security.getEncryptedPrefs
+import com.example.eudiwemu.service.mdoc.MDocCredentialService
+import com.example.eudiwemu.service.sdjwt.SdJwtCredentialService
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
-import com.nimbusds.jose.crypto.ECDSAVerifier
-import com.nimbusds.jose.jwk.Curve
-import com.nimbusds.jose.jwk.ECKey
-import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
-import java.io.ByteArrayInputStream
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
-import java.security.interfaces.ECPublicKey
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.basicAuth
@@ -47,11 +40,6 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.Date
 
 class IssuanceService(
@@ -67,6 +55,7 @@ class IssuanceService(
 
     private val json = Json { ignoreUnknownKeys = true }
     private val dpopManager = DPoPManager(walletKeyManager)
+    private val sdJwtCredentialService = SdJwtCredentialService(client)
 
     // Encrypted SharedPreferences - lazily initialized when activity context is available
     private var _encryptedPrefs: SharedPreferences? = null
@@ -283,7 +272,8 @@ class IssuanceService(
     suspend fun requestCredential(
         accessToken: String,
         jwtProof: String,
-        credentialConfig: CredentialConfiguration? = null
+        credentialConfig: CredentialConfiguration? = null,
+        format: String = AppConfig.FORMAT_SD_JWT
     ): String {
         val credentialUrl = "${AppConfig.ISSUER_URL}/credential"
 
@@ -293,10 +283,16 @@ class IssuanceService(
             accessTokenHash = dpopManager.computeAccessTokenHash(accessToken)
         )
 
+        val credentialConfigId = if (format == AppConfig.FORMAT_MSO_MDOC) {
+            AppConfig.MDOC_CREDENTIAL_CONFIG_ID
+        } else {
+            AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
+        }
+
         val requestBody = """
             {
-              "format": "dc+sd-jwt",
-              "credentialConfigurationId": "${AppConfig.SCOPE}",
+              "format": "$format",
+              "credentialConfigurationId": "$credentialConfigId",
               "proof": {
                 "proofType": "jwt",
                 "jwt": "$jwtProof"
@@ -314,8 +310,12 @@ class IssuanceService(
         val credential = jsonResponse["credential"] ?: throw Exception("Failed to request credential")
 
         // Verify and store the credential (with optional metadata)
-        verifyCredential(credential)
-        storeCredential(credential, AppConfig.SCOPE, credentialConfig)
+        if (format == AppConfig.FORMAT_MSO_MDOC) {
+            Log.d(TAG, "mDoc credential received, skipping client-side signature verification")
+        } else {
+            sdJwtCredentialService.verify(credential)
+        }
+        storeCredential(credential, credentialConfigId, credentialConfig, format)
 
         return credential
     }
@@ -328,28 +328,30 @@ class IssuanceService(
     fun storeCredential(
         credential: String,
         credentialConfigurationId: String,
-        credentialConfig: CredentialConfiguration? = null
+        credentialConfig: CredentialConfiguration? = null,
+        format: String = AppConfig.FORMAT_SD_JWT
     ) {
         val credentialType = AppConfig.extractCredentialType(credentialConfigurationId)
         val storageKey = AppConfig.getCredentialStorageKey(credentialType)
         encryptedPrefs.edit {
             putString(storageKey, credential)
+            putString(AppConfig.getCredentialFormatStorageKey(credentialType), format)
             if (credentialConfig?.claims != null) {
                 val claimsJson = json.encodeToString(
                     ListSerializer(ClaimMetadata.serializer()),
-                    credentialConfig.claims!!
+                    credentialConfig.claims
                 )
                 putString(AppConfig.getClaimsMetadataStorageKey(credentialType), claimsJson)
             }
             if (credentialConfig?.display != null) {
                 val displayJson = json.encodeToString(
                     ListSerializer(CredentialDisplay.serializer()),
-                    credentialConfig.display!!
+                    credentialConfig.display
                 )
                 putString(AppConfig.getCredentialDisplayStorageKey(credentialType), displayJson)
             }
         }
-        Log.d(TAG, "Credential stored successfully with key: $storageKey")
+        Log.d(TAG, "Credential stored successfully with key: $storageKey, format: $format")
     }
 
     /**
@@ -377,6 +379,20 @@ class IssuanceService(
     }
 
     /**
+     * Get stored credential format from encrypted SharedPreferences.
+     *
+     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
+     * @return The format string ("dc+sd-jwt" or "mso_mdoc"), defaults to "dc+sd-jwt"
+     */
+    fun getStoredCredentialFormat(credentialType: String? = null): String {
+        if (_encryptedPrefs == null) return AppConfig.FORMAT_SD_JWT
+        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
+        return encryptedPrefs.getString(
+            AppConfig.getCredentialFormatStorageKey(type), AppConfig.FORMAT_SD_JWT
+        ) ?: AppConfig.FORMAT_SD_JWT
+    }
+
+    /**
      * Remove stored credential from encrypted SharedPreferences.
      *
      * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
@@ -386,137 +402,25 @@ class IssuanceService(
         val storageKey = AppConfig.getCredentialStorageKey(type)
         encryptedPrefs.edit {
             remove(storageKey)
+            remove(AppConfig.getCredentialFormatStorageKey(type))
             remove(AppConfig.getClaimsMetadataStorageKey(type))
             remove(AppConfig.getCredentialDisplayStorageKey(type))
         }
         Log.d(TAG, "Credential and metadata removed for type: $type")
     }
 
-    private suspend fun verifyCredential(sdJwt: String) {
-        Log.d("WalletApp", "Verifying SD-JWT...")
-        if (sdJwt.isEmpty()) throw RuntimeException("No SD-JWT included!")
-
-        // Step 1: Split SD-JWT into JWT part and disclosures
-        val parts = sdJwt.split("~")
-        val jwtPart = parts.firstOrNull() ?: throw IllegalArgumentException("Invalid SD-JWT format")
-        val disclosures = parts.drop(1).filter { it.isNotEmpty() }
-
-        Log.d("WalletApp", "Parsed JWT: $jwtPart")
-        Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
-
-        val signedJwt = SignedJWT.parse(jwtPart)
-
-        // Step 2: Fetch the issuer's public key (JWKS)
-        val jwkSet = fetchIssuerJWKSet("${AppConfig.ISSUER_URL}/.well-known/jwks.json")
-        val jwksKey = jwkSet.keys.first().toECKey()
-
-        // Step 3: Extract public key from x5c header and cross-check with JWKS
-        val x5cKey = extractKeyFromX5c(signedJwt)
-        if (!keysMatch(jwksKey, x5cKey)) {
-            throw SecurityException("x5c key does not match issuer JWKS - possible tampering")
-        }
-        Log.d("WalletApp", "x5c key matches JWKS key - cross-check passed")
-
-        // Step 4: Verify the SD-JWT signature using JWKS key
-        val verifier = ECDSAVerifier(jwksKey)
-        val isValid = signedJwt.verify(verifier)
-        Log.d("WalletApp", "Signature valid: $isValid")
-
-        if (!isValid) throw RuntimeException("Invalid SD-JWT signature!")
-    }
-
     /**
-     * Extracts the issuer's public key from the x5c certificate chain in the JWT header.
+     * Decodes a credential, dispatching based on stored format.
+     * For SD-JWT: extracts disclosed claims from disclosures.
+     * For mDoc: decodes CBOR IssuerSigned structure to extract claims.
      */
-    private fun extractKeyFromX5c(signedJwt: SignedJWT): ECKey {
-        val x5cChain = signedJwt.header.x509CertChain
-            ?: throw IllegalArgumentException("No x5c certificate chain in credential JWT header")
-
-        if (x5cChain.isEmpty()) {
-            throw IllegalArgumentException("Empty x5c certificate chain")
+    fun decodeCredential(credential: String): Map<String, Any> {
+        val format = getStoredCredentialFormat()
+        return if (format == AppConfig.FORMAT_MSO_MDOC) {
+            MDocCredentialService.decode(credential)
+        } else {
+            sdJwtCredentialService.decode(credential)
         }
-
-        // Parse leaf certificate (first in chain)
-        val certBytes = x5cChain[0].decode()
-        val certFactory = CertificateFactory.getInstance("X.509")
-        val certificate = certFactory.generateCertificate(ByteArrayInputStream(certBytes)) as X509Certificate
-
-        // Extract EC public key and build JWK
-        val ecPublicKey = certificate.publicKey as ECPublicKey
-        return ECKey.Builder(Curve.P_256, ecPublicKey).build()
-    }
-
-    /**
-     * Compares two ECKeys by their thumbprint.
-     */
-    private fun keysMatch(jwksKey: ECKey, x5cKey: ECKey): Boolean {
-        return try {
-            val jwksThumbprint = jwksKey.computeThumbprint().toString()
-            val x5cThumbprint = x5cKey.computeThumbprint().toString()
-            jwksThumbprint == x5cThumbprint
-        } catch (e: Exception) {
-            Log.e("WalletApp", "Failed to compute key thumbprints", e)
-            false
-        }
-    }
-
-    /**
-     * Decodes an SD-JWT credential, extracting disclosed claims.
-     *
-     * With two-level recursive disclosure (EU Reference Demo style):
-     * - Parent disclosures (e.g., credential_holder) contain {"_sd": [...]} - these are containers
-     * - Leaf disclosures (e.g., family_name) contain actual values
-     *
-     * This method returns only the leaf values for display, filtering out parent containers.
-     */
-    fun decodeCredential(sdJwt: String): Map<String, Any> {
-        Log.d("WalletApp", "Decoding SD-JWT...")
-
-        val parts = sdJwt.split("~")
-        val disclosures = parts.drop(1).filter { it.isNotEmpty() }
-
-        Log.d("WalletApp", "Number of disclosures: ${disclosures.size}")
-
-        val decodedClaims = mutableMapOf<String, Any>()
-
-        for (disclosure in disclosures) {
-            try {
-                val decodedBytes = Base64.decode(disclosure, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-                val decodedJson = String(decodedBytes)
-                val claimData = json.parseToJsonElement(decodedJson).jsonArray
-
-                if (claimData.size >= 3) {
-                    val claimName = claimData[1].jsonPrimitive.content
-                    val claimValue = claimData[2]
-
-                    // Skip parent disclosures that only contain _sd array (these are containers)
-                    if (claimValue is JsonObject && claimValue.containsKey("_sd")) {
-                        Log.d("WalletApp", "Skipping parent container disclosure: $claimName")
-                        continue
-                    }
-
-                    // Handle nested objects (JsonObject) vs primitive values
-                    val parsedValue: Any = if (claimValue is JsonObject) {
-                        claimValue.jsonObject.mapValues { entry ->
-                            when (val v = entry.value) {
-                                is JsonPrimitive -> v.content
-                                else -> v.toString()
-                            }
-                        }
-                    } else {
-                        claimValue.jsonPrimitive.content
-                    }
-                    decodedClaims[claimName] = parsedValue
-                    Log.d("WalletApp", "Decoded Claim: $claimName -> $parsedValue")
-                } else {
-                    Log.d("WalletApp", "Malformed disclosure: $decodedJson")
-                }
-            } catch (e: Exception) {
-                Log.e("WalletApp", "Error decoding disclosure: $disclosure", e)
-            }
-        }
-
-        return decodedClaims
     }
 
     /**
@@ -537,18 +441,6 @@ class IssuanceService(
             }
         }
         return flattened
-    }
-
-
-    // Helper function to fetch issuer's JWK Set
-    private suspend fun fetchIssuerJWKSet(jwksUrl: String): JWKSet {
-        return try {
-            val response: HttpResponse = client.get(jwksUrl)
-            val jwksJson: String = response.body()
-            JWKSet.parse(jwksJson)
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to fetch JWK Set: ${e.message}")
-        }
     }
 
 }

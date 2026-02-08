@@ -7,10 +7,19 @@ class AppConfig {
     companion object {
         const val CLIENT_ID = "wallet-client"
         const val CLIENT_SECRET = "wallet-secret"
-        const val SCOPE = "eu.europa.ec.eudi.pda1_sd_jwt_vc"
+        const val SCOPE = "eu.europa.ec.eudi.pda1.1"
         const val REDIRECT_URI = "myapp://callback"
         const val KEY_ALIAS = "wallet-key"
         const val WUA_KEY_ALIAS = "wua-key"
+
+        // Credential format constants
+        const val FORMAT_SD_JWT = "dc+sd-jwt"
+        const val FORMAT_MSO_MDOC = "mso_mdoc"
+
+        // Credential configuration IDs (format-specific, used in credential requests and metadata lookups)
+        const val SD_JWT_CREDENTIAL_CONFIG_ID = "eu.europa.ec.eudi.pda1_sd_jwt_vc"
+        const val MDOC_CREDENTIAL_CONFIG_ID = "eu.europa.ec.eudi.pda1_mso_mdoc"
+        const val MDOC_DOC_TYPE = "eu.europa.ec.eudi.pda1.1"
 
         const val AUTH_SERVER_HOST = BuildConfig.AUTH_SERVER_HOST
         const val AUTH_SERVER_TOKEN_URL: String = BuildConfig.AUTH_SERVER_TOKEN_URL
@@ -35,6 +44,7 @@ class AppConfig {
 
         // Credential storage - keyed by credential type for multi-credential support
         private const val STORED_VC_PREFIX = "stored_vc_"
+        private const val FORMAT_SUFFIX = "_format"
 
         /**
          * Get storage key for a credential type.
@@ -47,11 +57,24 @@ class AppConfig {
         /**
          * Extract credential type from scope/configuration ID.
          * E.g., "eu.europa.ec.eudi.pda1_sd_jwt_vc" -> "pda1"
+         * E.g., "eu.europa.ec.eudi.pda1_mso_mdoc" -> "pda1"
          */
         fun extractCredentialType(scope: String): String {
-            // Pattern: eu.europa.ec.eudi.<type>_sd_jwt_vc
-            val regex = Regex("""eu\.europa\.ec\.eudi\.(\w+)_sd_jwt_vc""")
-            return regex.find(scope)?.groupValues?.get(1) ?: scope
+            // Match config ID format: eu.europa.ec.eudi.<type>_sd_jwt_vc or _mso_mdoc
+            val configRegex = Regex("""eu\.europa\.ec\.eudi\.(\w+)_(?:sd_jwt_vc|mso_mdoc)""")
+            configRegex.find(scope)?.groupValues?.get(1)?.let { return it }
+            // Match scope format: eu.europa.ec.eudi.<type>.<version>
+            val scopeRegex = Regex("""eu\.europa\.ec\.eudi\.(\w+)\.\d+""")
+            scopeRegex.find(scope)?.groupValues?.get(1)?.let { return it }
+            return scope
+        }
+
+        /**
+         * Get storage key for the credential format.
+         * E.g., "pda1" -> "stored_vc_pda1_format"
+         */
+        fun getCredentialFormatStorageKey(credentialType: String): String {
+            return "${STORED_VC_PREFIX}${credentialType}$FORMAT_SUFFIX"
         }
 
         /**

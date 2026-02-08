@@ -7,28 +7,23 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.eudiwemu.security.getEncryptedPrefs
-import com.example.eudiwemu.service.IssuanceService
-import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
 import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
-import com.example.eudiwemu.ui.viewmodel.AuthenticationViewModel
+import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.androidx.compose.koinViewModel
 
 class MainActivity : FragmentActivity() {
-    private val issuanceService: IssuanceService by inject()
-    private val vpTokenService: VpTokenService by inject()
     private val wuaService: WuaService by inject()
     private val wiaService: WiaService by inject()
 
@@ -64,12 +59,9 @@ class MainActivity : FragmentActivity() {
                     darkTheme = false,
                     dynamicColor = false
                 ) {
-                    // Set the content after authentication check
                     MainNavHost(
                         activity = this@MainActivity,
                         intent = intent,
-                        issuanceService = issuanceService,
-                        vpTokenService = vpTokenService,
                         wuaService = wuaService,
                         wiaService = wiaService,
                         isAuthenticated = isAuthenticated.value,
@@ -84,8 +76,6 @@ class MainActivity : FragmentActivity() {
 fun MainNavHost(
     activity: FragmentActivity,
     intent: Intent?,
-    issuanceService: IssuanceService,
-    vpTokenService: VpTokenService,
     wuaService: WuaService,
     wiaService: WiaService,
     isAuthenticated: Boolean
@@ -97,24 +87,19 @@ fun MainNavHost(
 
     NavHost(navController = navController, startDestination = startDestination) {
         composable("login_screen") {
-            val viewModel: AuthenticationViewModel = viewModel()
             LoginScreen(
                 activity = activity,
-                viewModel = viewModel,
                 navController = navController,
                 wuaService = wuaService,
                 wiaService = wiaService
             )
         }
         composable("wallet_app_screen") {
+            val walletViewModel: WalletViewModel = koinViewModel()
             WalletScreen(
                 activity = activity,
                 intent = intent,
-                context = LocalContext.current,
-                issuanceService = issuanceService,
-                vpTokenService = vpTokenService,
-                wuaService = wuaService,
-                wiaService = wiaService
+                viewModel = walletViewModel
             )
         }
     }

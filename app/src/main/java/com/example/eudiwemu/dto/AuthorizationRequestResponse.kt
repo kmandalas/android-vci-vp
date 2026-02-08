@@ -47,11 +47,13 @@ data class CredentialQuery(
 
 @Serializable
 data class CredentialMeta(
-    val vct_values: List<String>? = null
+    val vct_values: List<String>? = null,
+    val doctype_value: String? = null
 )
 
 @Serializable
 data class ClaimQuery(
     val path: List<String>,
-    val id: String? = null
+    val id: String? = null,
+    val intent_to_retain: Boolean? = null
 )
