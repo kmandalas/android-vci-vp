@@ -38,8 +38,8 @@ class ClaimMetadataResolver(private val claimsMetadata: List<ClaimMetadata>) {
 
     /**
      * Find all leaf claim metadata entries under a given parent prefix.
-     * E.g., parentPath=["credential_holder"] returns entries with paths like
-     * ["credential_holder", "family_name"], ["credential_holder", "given_name"], etc.
+     * Works with both SD-JWT paths (e.g., parentPath=["credential_holder"])
+     * and mDoc paths (e.g., parentPath=["namespace", "credential_holder"]).
      */
     fun getChildClaims(parentPath: List<String>): List<ClaimMetadata> {
         return claimsMetadata.filter { claim ->
@@ -72,16 +72,20 @@ class ClaimMetadataResolver(private val claimsMetadata: List<ClaimMetadata>) {
 
     /**
      * Build a grouped structure: parent name -> list of child ClaimMetadata.
-     * Groups are determined by the first path element of each claim.
+     * Groups leaf claims by their parent element — the second-to-last path segment.
+     * This handles both SD-JWT paths (["parent", "leaf"]) and mDoc paths
+     * (["namespace", "parent", "leaf"]) uniformly.
+     * Parent-only entries (where the last segment IS the parent) are excluded.
      */
     fun groupByParent(): Map<String, List<ClaimMetadata>> {
         return claimsMetadata
             .filter { it.path.size >= 2 }
-            .groupBy { it.path.first() }
+            .groupBy { it.path[it.path.size - 2] }
     }
 
     /**
-     * Get unique parent names (first path element) from all claims.
+     * Get unique top-level parent names (first path element) from all claims.
+     * Used by SD-JWT claim selection dialog to identify parent disclosures.
      */
     fun getParentNames(): Set<String> {
         return claimsMetadata

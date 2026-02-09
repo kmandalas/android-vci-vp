@@ -78,7 +78,7 @@ class WalletViewModel(
                     }
                     val configs = metadata.credential_configurations_supported
                     val dynamicTypes = configs.mapNotNull { (configId, config) ->
-                        val displayName = config.display?.firstOrNull()?.name
+                        val displayName = config.resolvedDisplay()?.firstOrNull()?.name
                         if (displayName != null) displayName to configId else null
                     }.toMap()
                     issuanceState = issuanceState.copy(

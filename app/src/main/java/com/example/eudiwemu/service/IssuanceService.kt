@@ -336,17 +336,19 @@ class IssuanceService(
         encryptedPrefs.edit {
             putString(storageKey, credential)
             putString(AppConfig.getCredentialFormatStorageKey(credentialType), format)
-            if (credentialConfig?.claims != null) {
+            val resolvedClaims = credentialConfig?.resolvedClaims()
+            if (resolvedClaims != null) {
                 val claimsJson = json.encodeToString(
                     ListSerializer(ClaimMetadata.serializer()),
-                    credentialConfig.claims
+                    resolvedClaims
                 )
                 putString(AppConfig.getClaimsMetadataStorageKey(credentialType), claimsJson)
             }
-            if (credentialConfig?.display != null) {
+            val resolvedDisplay = credentialConfig?.resolvedDisplay()
+            if (resolvedDisplay != null) {
                 val displayJson = json.encodeToString(
                     ListSerializer(CredentialDisplay.serializer()),
-                    credentialConfig.display
+                    resolvedDisplay
                 )
                 putString(AppConfig.getCredentialDisplayStorageKey(credentialType), displayJson)
             }

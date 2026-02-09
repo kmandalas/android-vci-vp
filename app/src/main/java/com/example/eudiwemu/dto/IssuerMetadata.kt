@@ -9,12 +9,26 @@ data class CredentialIssuerMetadata(
 )
 
 @Serializable
+data class CredentialMetadata(
+    val claims: List<ClaimMetadata>? = null,
+    val display: List<CredentialDisplay>? = null
+)
+
+@Serializable
 data class CredentialConfiguration(
     val format: String,
     val vct: String? = null,
+    val credential_metadata: CredentialMetadata? = null,
+    // Keep old fields for backward compat with other issuers
     val display: List<CredentialDisplay>? = null,
     val claims: List<ClaimMetadata>? = null
-)
+) {
+    /** Resolve claims preferring credential_metadata wrapper, falling back to top-level. */
+    fun resolvedClaims(): List<ClaimMetadata>? = credential_metadata?.claims ?: claims
+
+    /** Resolve display preferring credential_metadata wrapper, falling back to top-level. */
+    fun resolvedDisplay(): List<CredentialDisplay>? = credential_metadata?.display ?: display
+}
 
 @Serializable
 data class CredentialDisplay(
