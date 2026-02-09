@@ -9,20 +9,6 @@ import com.example.eudiwemu.dto.ClaimMetadata
 class ClaimMetadataResolver(private val claimsMetadata: List<ClaimMetadata>) {
 
     /**
-     * Resolve display name for a claim identified by its full path.
-     * Falls back to the last segment of the path if no metadata match is found.
-     */
-    fun getDisplayName(path: List<String>, locale: String = "en"): String {
-        val metadata = claimsMetadata.find { it.path == path }
-        if (metadata != null) {
-            val localeMatch = metadata.display?.find { it.locale == locale }
-            val anyDisplay = localeMatch ?: metadata.display?.firstOrNull()
-            if (anyDisplay != null) return anyDisplay.name
-        }
-        return path.lastOrNull()?.formatAsLabel() ?: ""
-    }
-
-    /**
      * Resolve display name for a leaf claim given just its claim name (last path segment).
      * Searches all metadata entries for a matching last path element.
      */
@@ -55,19 +41,6 @@ class ClaimMetadataResolver(private val claimsMetadata: List<ClaimMetadata>) {
         return getChildClaims(listOf(parentName))
             .mapNotNull { it.path.lastOrNull() }
             .toSet()
-    }
-
-    /**
-     * Given DCQL requested paths, return all matching claim metadata entries using prefix matching.
-     * A requested path like ["credential_holder"] matches all entries whose path starts with that prefix.
-     */
-    fun matchRequestedClaims(dcqlPaths: List<List<String>>): List<ClaimMetadata> {
-        return claimsMetadata.filter { claim ->
-            dcqlPaths.any { requestedPath ->
-                claim.path.size >= requestedPath.size &&
-                claim.path.subList(0, requestedPath.size) == requestedPath
-            }
-        }
     }
 
     /**
