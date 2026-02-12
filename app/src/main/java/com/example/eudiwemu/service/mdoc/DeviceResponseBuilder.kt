@@ -43,20 +43,21 @@ object DeviceResponseBuilder {
     private const val TAG = "DeviceResponseBuilder"
 
     /**
-     * Build a DeviceResponse from a stored IssuerSigned credential.
+     * Build a DeviceResponse from a stored IssuerSigned credential, returning raw CBOR bytes.
+     * Used by proximity (BLE) presentation where DeviceRetrievalHelper needs raw bytes.
      *
      * @param credential         Base64url-encoded IssuerSigned CBOR
      * @param selectedClaims     List of elementIdentifier names to include
      * @param sessionTranscript  CBOR-encoded SessionTranscript bytes
      * @param keyAlias           Android Keystore alias for signing
-     * @return Base64url-encoded DeviceResponse CBOR
+     * @return Raw DeviceResponse CBOR bytes
      */
-    fun build(
+    fun buildBytes(
         credential: String,
         selectedClaims: List<String>,
         sessionTranscript: ByteArray,
         keyAlias: String = AppConfig.WUA_KEY_ALIAS
-    ): String {
+    ): ByteArray {
         // Step 1: Decode stored IssuerSigned CBOR
         val issuerSignedBytes = Base64.decode(credential, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
         val decoder = CBORDecoder(issuerSignedBytes)
@@ -78,6 +79,7 @@ object DeviceResponseBuilder {
         val emptyMap = CBORPairList(emptyList<CBORPair>())
         val emptyMapBytes = emptyMap.encode()
         val deviceNameSpacesTagged = CBORTaggedItem(24, CBORByteArray(emptyMapBytes))
+
         // Step 5: Build DeviceAuthentication and sign it
         val deviceSignature = buildDeviceSignature(
             sessionTranscript, deviceNameSpacesTagged, keyAlias
@@ -114,8 +116,27 @@ object DeviceResponseBuilder {
             CBORPair(CBORString("status"), CBORInteger(0))
         ))
 
-        // Step 8: Encode and return as base64url
-        val responseBytes = deviceResponse.encode()
+        // Step 8: Encode and return raw bytes
+        return deviceResponse.encode()
+    }
+
+    /**
+     * Build a DeviceResponse from a stored IssuerSigned credential.
+     * Used by OID4VP online flow where the VP token is base64url-encoded.
+     *
+     * @param credential         Base64url-encoded IssuerSigned CBOR
+     * @param selectedClaims     List of elementIdentifier names to include
+     * @param sessionTranscript  CBOR-encoded SessionTranscript bytes
+     * @param keyAlias           Android Keystore alias for signing
+     * @return Base64url-encoded DeviceResponse CBOR
+     */
+    fun build(
+        credential: String,
+        selectedClaims: List<String>,
+        sessionTranscript: ByteArray,
+        keyAlias: String = AppConfig.WUA_KEY_ALIAS
+    ): String {
+        val responseBytes = buildBytes(credential, selectedClaims, sessionTranscript, keyAlias)
         return Base64.encodeToString(responseBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }
 

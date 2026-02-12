@@ -1,6 +1,10 @@
 package com.example.eudiwemu.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.QrScannerActivity
+import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.ui.viewmodel.WalletEvent
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -48,6 +53,22 @@ fun WalletScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var expanded by remember { mutableStateOf(false) }
+
+    // BLE permissions required for proximity presentation (Android 12+)
+    val blePermissions = arrayOf(
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN
+    )
+
+    val blePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            viewModel.startProximityPresentation(activity)
+        }
+    }
 
     // Initialize on first composition
     LaunchedEffect(Unit) {
@@ -76,6 +97,17 @@ fun WalletScreen(
     val attestationState = viewModel.attestationState
     val issuanceState = viewModel.issuanceState
     val vpState = viewModel.vpRequestState
+    val proximityState = viewModel.proximityState
+
+    // Show proximity presentation screen when active
+    if (proximityState.isActive) {
+        ProximityPresentationScreen(
+            proximityState = proximityState,
+            onSubmitResponse = { selected -> viewModel.submitProximityResponse(selected) },
+            onStop = { viewModel.stopProximityPresentation() }
+        )
+        return
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -160,6 +192,24 @@ fun WalletScreen(
                         }
                     ) {
                         Text("Scan QR")
+                    }
+                    // Show "Present in Person" button only for mDoc credentials
+                    if (viewModel.getStoredCredentialFormat() == AppConfig.FORMAT_MSO_MDOC) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val allGranted = blePermissions.all { perm ->
+                                    context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+                                }
+                                if (allGranted) {
+                                    viewModel.startProximityPresentation(activity)
+                                } else {
+                                    blePermissionLauncher.launch(blePermissions)
+                                }
+                            }
+                        ) {
+                            Text("Present in Person")
+                        }
                     }
                 }
 

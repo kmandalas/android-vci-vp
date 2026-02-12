@@ -18,6 +18,8 @@ import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
+import com.example.eudiwemu.service.mdoc.DeviceResponseBuilder
+import com.example.eudiwemu.service.mdoc.ProximityPresentationService
 import com.example.eudiwemu.util.ClaimMetadataResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -44,6 +46,11 @@ class WalletViewModel(
 
     var vpRequestState by mutableStateOf(VpRequestState())
         private set
+
+    var proximityState by mutableStateOf(ProximityState())
+        private set
+
+    private var proximityService: ProximityPresentationService? = null
 
     private val _events = Channel<WalletEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
@@ -384,6 +391,88 @@ class WalletViewModel(
                 _events.send(WalletEvent.ShowSnackbar("❌ Error: ${e.message}"))
             }
         }
+    }
+
+    // --- Proximity presentation ---
+
+    fun startProximityPresentation(activity: FragmentActivity) {
+        val service = ProximityPresentationService(activity.applicationContext)
+        proximityService = service
+        proximityState = ProximityState(isActive = true, status = "Initializing...")
+
+        service.startQrEngagement { event ->
+            viewModelScope.launch {
+                when (event) {
+                    is ProximityPresentationService.ProximityEvent.QrCodeReady -> {
+                        proximityState = proximityState.copy(
+                            qrContent = event.qrContent,
+                            status = "Scan this QR code with verifier device"
+                        )
+                    }
+                    is ProximityPresentationService.ProximityEvent.Connecting -> {
+                        proximityState = proximityState.copy(status = "Connecting...")
+                    }
+                    is ProximityPresentationService.ProximityEvent.Connected -> {
+                        proximityState = proximityState.copy(status = "Connected, waiting for request...")
+                    }
+                    is ProximityPresentationService.ProximityEvent.RequestReceived -> {
+                        proximityState = proximityState.copy(
+                            status = "Request received",
+                            requestedClaims = event.parsedRequest.allRequestedElements,
+                            parsedRequest = event.parsedRequest
+                        )
+                    }
+                    is ProximityPresentationService.ProximityEvent.ResponseSent -> {
+                        proximityState = proximityState.copy(status = "Presentation complete")
+                        _events.send(WalletEvent.ShowSnackbar("Proximity presentation complete"))
+                    }
+                    is ProximityPresentationService.ProximityEvent.Disconnected -> {
+                        proximityState = proximityState.copy(status = "Disconnected")
+                    }
+                    is ProximityPresentationService.ProximityEvent.Error -> {
+                        Log.e("WalletApp", "Proximity error", event.error)
+                        proximityState = proximityState.copy(
+                            status = "Error: ${event.error.message}"
+                        )
+                        _events.send(WalletEvent.ShowSnackbar("Proximity error: ${event.error.message}"))
+                    }
+                }
+            }
+        }
+    }
+
+    fun submitProximityResponse(selectedClaims: List<String>) {
+        proximityState = proximityState.copy(requestedClaims = null, status = "Sending response...")
+
+        viewModelScope.launch {
+            try {
+                val storedCredential = withContext(Dispatchers.IO) {
+                    issuanceService.getStoredCredential().orEmpty()
+                }
+                val sessionTranscript = proximityService?.sessionTranscript
+                    ?: throw IllegalStateException("Session transcript not available")
+
+                val responseBytes = withContext(Dispatchers.Default) {
+                    DeviceResponseBuilder.buildBytes(
+                        credential = storedCredential,
+                        selectedClaims = selectedClaims,
+                        sessionTranscript = sessionTranscript
+                    )
+                }
+
+                proximityService?.sendResponse(responseBytes)
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error sending proximity response", e)
+                proximityState = proximityState.copy(status = "Error: ${e.message}")
+                _events.send(WalletEvent.ShowSnackbar("Error: ${e.message}"))
+            }
+        }
+    }
+
+    fun stopProximityPresentation() {
+        proximityService?.stopPresentation()
+        proximityService = null
+        proximityState = ProximityState()
     }
 
     fun flattenClaimsForDisplay(claims: Map<String, Any>): Map<String, String> {

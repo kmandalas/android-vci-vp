@@ -1,8 +1,9 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+    alias(libs.plugins.composeCompiler)
 
-    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.10"
 }
 
 // Read LOCAL_IP from gradle.properties (defaults to localhost if not set)
@@ -52,18 +53,15 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
     }
     packaging {
         resources {
@@ -115,6 +113,17 @@ dependencies {
 
     // Authlete CBOR (for mDoc support)
     implementation("com.authlete:cbor:1.16")
+
+    // Multipaz (ISO 18013-5 proximity presentation transport)
+    implementation(libs.multipaz) {
+        exclude(group = "org.bouncycastle")
+    }
+    implementation(libs.multipaz.android.legacy) {
+        exclude(group = "org.bouncycastle")
+    }
+
+    // ZXing (QR code generation for proximity presentation)
+    implementation(libs.zxing.core)
 
     //QR Scanning
     implementation("androidx.camera:camera-camera2:1.3.4")
