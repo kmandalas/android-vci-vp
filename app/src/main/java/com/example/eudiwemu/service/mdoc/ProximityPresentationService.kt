@@ -185,8 +185,15 @@ class ProximityPresentationService(private val context: Context) {
             }
 
             override fun onError(error: Throwable) {
-                Log.e(TAG, "Device retrieval error", error)
-                onEvent(ProximityEvent.Error(error))
+                // Readers often disconnect without sending session termination —
+                // treat "disconnected without proper session termination" as normal disconnect
+                if (error.message?.contains("session termination", ignoreCase = true) == true) {
+                    Log.d(TAG, "Peer disconnected without session termination (normal BLE behavior)")
+                    onEvent(ProximityEvent.Disconnected)
+                } else {
+                    Log.e(TAG, "Device retrieval error", error)
+                    onEvent(ProximityEvent.Error(error))
+                }
             }
         }
     }
