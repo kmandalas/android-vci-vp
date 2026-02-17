@@ -3,6 +3,7 @@ package com.example.eudiwemu.ui.viewmodel
 import com.authlete.sd.Disclosure
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
 import com.example.eudiwemu.dto.CredentialConfiguration
+import com.example.eudiwemu.service.mdoc.DeviceRequestParser
 import com.example.eudiwemu.util.ClaimMetadataResolver
 
 data class CredentialUiState(
@@ -36,6 +37,14 @@ data class VpRequestState(
     val selectedClaims: List<Disclosure>? = null,
     val mdocAvailableClaims: List<String>? = null,
     val vpClaimResolver: ClaimMetadataResolver? = null
+)
+
+data class ProximityState(
+    val isActive: Boolean = false,
+    val qrContent: String? = null,
+    val status: String = "",
+    val requestedClaims: List<String>? = null,
+    val parsedRequest: DeviceRequestParser.ParsedRequest? = null
 )
 
 sealed class WalletEvent {
