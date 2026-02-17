@@ -70,6 +70,8 @@ Both formats are supported end-to-end with the EU Reference Verifier.
 
 🌐 Watch the SD-JWT interop test demo with the EU Reference Verifier on [YouTube](https://youtu.be/W2Ma6QF-G-Y).
 
+📱 Watch a screen recording that walks through the entire mDoc flow on [YouTube](https://youtu.be/GxNaKnhyoj4).
+
 📴 Watch mDoc close-proximity (QR + BLE offline) demo  demo on [YouTube](https://youtu.be/TRmPL65S8p4).
 
 ---
