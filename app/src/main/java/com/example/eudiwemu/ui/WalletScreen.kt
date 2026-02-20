@@ -1,10 +1,6 @@
 package com.example.eudiwemu.ui
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +18,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -39,8 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
-import com.example.eudiwemu.QrScannerActivity
-import com.example.eudiwemu.config.AppConfig
+import androidx.navigation.NavController
 import com.example.eudiwemu.ui.viewmodel.WalletEvent
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -48,27 +44,12 @@ import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 fun WalletScreen(
     activity: FragmentActivity,
     intent: Intent?,
-    viewModel: WalletViewModel
+    viewModel: WalletViewModel,
+    navController: NavController
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var expanded by remember { mutableStateOf(false) }
-
-    // BLE permissions required for proximity presentation (Android 12+)
-    val blePermissions = arrayOf(
-        Manifest.permission.BLUETOOTH_ADVERTISE,
-        Manifest.permission.BLUETOOTH_CONNECT,
-        Manifest.permission.BLUETOOTH_SCAN
-    )
-
-    val blePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        if (allGranted) {
-            viewModel.startProximityPresentation(activity)
-        }
-    }
 
     // Initialize on first composition
     LaunchedEffect(Unit) {
@@ -89,25 +70,17 @@ fun WalletScreen(
                     val browseIntent = Intent(Intent.ACTION_VIEW, event.uri.toUri())
                     context.startActivity(browseIntent)
                 }
+                is WalletEvent.NavigateToDetail -> {
+                    navController.navigate("credential_detail/${event.credentialKey}")
+                }
             }
         }
     }
 
-    val credentialState = viewModel.credentialState
+    val credentialList = viewModel.credentialList
     val attestationState = viewModel.attestationState
     val issuanceState = viewModel.issuanceState
     val vpState = viewModel.vpRequestState
-    val proximityState = viewModel.proximityState
-
-    // Show proximity presentation screen when active
-    if (proximityState.isActive) {
-        ProximityPresentationScreen(
-            proximityState = proximityState,
-            onSubmitResponse = { selected -> viewModel.submitProximityResponse(selected) },
-            onStop = { viewModel.stopProximityPresentation() }
-        )
-        return
-    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -176,39 +149,29 @@ fun WalletScreen(
                     }
                 }
 
-                credentialState.claims?.let { claims ->
-                    CredentialCard(
-                        claims = viewModel.flattenClaimsForDisplay(claims),
-                        credentialDisplayName = credentialState.credentialDisplayName,
-                        credentialFormat = viewModel.getStoredCredentialFormat(),
-                        resolver = credentialState.claimResolver,
-                        onDelete = { viewModel.deleteCredential() }
+                // Credential card list
+                if (credentialList.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "My Credentials",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            val qrIntent = Intent(context, QrScannerActivity::class.java)
-                            activity.startActivity(qrIntent)
-                        }
-                    ) {
-                        Text("Scan QR")
-                    }
-                    // Show "Present in Person" button only for mDoc credentials
-                    if (viewModel.getStoredCredentialFormat() == AppConfig.FORMAT_MSO_MDOC) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                val allGranted = blePermissions.all { perm ->
-                                    context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+                    credentialList.forEach { cred ->
+                        cred.claims?.let { claims ->
+                            CredentialCard(
+                                claims = viewModel.flattenClaimsForDisplay(claims),
+                                credentialDisplayName = cred.credentialDisplayName,
+                                credentialFormat = cred.credentialFormat,
+                                resolver = cred.claimResolver,
+                                compact = true,
+                                issuedAt = cred.issuedAt,
+                                expiresAt = cred.expiresAt,
+                                onClick = {
+                                    viewModel.selectCredential(cred.credentialKey)
+                                    navController.navigate("credential_detail/${cred.credentialKey}")
                                 }
-                                if (allGranted) {
-                                    viewModel.startProximityPresentation(activity)
-                                } else {
-                                    blePermissionLauncher.launch(blePermissions)
-                                }
-                            }
-                        ) {
-                            Text("Present in Person")
+                            )
                         }
                     }
                 }

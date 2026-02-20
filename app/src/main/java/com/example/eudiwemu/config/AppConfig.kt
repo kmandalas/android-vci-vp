@@ -42,16 +42,38 @@ class AppConfig {
         const val STORED_WUA = "stored_wua"
         const val WUA_ID = "wua_id"
 
-        // Credential storage - keyed by credential type for multi-credential support
+        // Credential storage - keyed by credential type + format for multi-credential support
         private const val STORED_VC_PREFIX = "stored_vc_"
-        private const val FORMAT_SUFFIX = "_format"
+        const val STORED_CREDENTIAL_INDEX = "stored_credential_index"
 
         /**
-         * Get storage key for a credential type.
-         * E.g., "pda1" -> "stored_vc_pda1"
+         * Extract format suffix from a credential configuration ID.
+         * E.g., "eu.europa.ec.eudi.pda1_sd_jwt_vc" -> "sdjwt"
+         * E.g., "eu.europa.ec.eudi.pda1_mso_mdoc" -> "mdoc"
          */
-        fun getCredentialStorageKey(credentialType: String): String {
-            return "$STORED_VC_PREFIX$credentialType"
+        fun extractFormatSuffix(configId: String): String {
+            return when {
+                configId.endsWith("_mso_mdoc") -> "mdoc"
+                else -> "sdjwt"
+            }
+        }
+
+        /**
+         * Extract composite credential key from a configuration ID.
+         * Combines credential type and format suffix for unique storage keys.
+         * E.g., "eu.europa.ec.eudi.pda1_sd_jwt_vc" -> "pda1_sdjwt"
+         * E.g., "eu.europa.ec.eudi.pda1_mso_mdoc" -> "pda1_mdoc"
+         */
+        fun extractCredentialKey(configId: String): String {
+            return "${extractCredentialType(configId)}_${extractFormatSuffix(configId)}"
+        }
+
+        /**
+         * Get storage key for a credential bundle.
+         * E.g., "pda1_sdjwt" -> "stored_vc_pda1_sdjwt"
+         */
+        fun getCredentialStorageKey(credentialKey: String): String {
+            return "$STORED_VC_PREFIX$credentialKey"
         }
 
         /**
@@ -68,33 +90,6 @@ class AppConfig {
             scopeRegex.find(scope)?.groupValues?.get(1)?.let { return it }
             return scope
         }
-
-        /**
-         * Get storage key for the credential format.
-         * E.g., "pda1" -> "stored_vc_pda1_format"
-         */
-        fun getCredentialFormatStorageKey(credentialType: String): String {
-            return "${STORED_VC_PREFIX}${credentialType}$FORMAT_SUFFIX"
-        }
-
-        /**
-         * Get storage key for claims metadata of a credential type.
-         * E.g., "pda1" -> "stored_vc_pda1_claims_metadata"
-         */
-        fun getClaimsMetadataStorageKey(credentialType: String): String {
-            return "${STORED_VC_PREFIX}${credentialType}_claims_metadata"
-        }
-
-        /**
-         * Get storage key for credential display metadata of a credential type.
-         * E.g., "pda1" -> "stored_vc_pda1_display"
-         */
-        fun getCredentialDisplayStorageKey(credentialType: String): String {
-            return "${STORED_VC_PREFIX}${credentialType}_display"
-        }
-
-        // Default PDA1 credential storage key (for convenience)
-        val STORED_VC_PDA1: String get() = getCredentialStorageKey(extractCredentialType(SCOPE))
     }
 
 }

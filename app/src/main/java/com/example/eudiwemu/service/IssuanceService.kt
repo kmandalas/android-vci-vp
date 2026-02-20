@@ -7,12 +7,11 @@ import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
-import com.example.eudiwemu.dto.ClaimMetadata
 import com.example.eudiwemu.dto.CredentialConfiguration
-import com.example.eudiwemu.dto.CredentialDisplay
 import com.example.eudiwemu.dto.CredentialIssuerMetadata
 import com.example.eudiwemu.dto.NonceResponse
 import com.example.eudiwemu.dto.PushedAuthorizationResponse
+import com.example.eudiwemu.dto.StoredCredential
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
@@ -38,7 +37,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.util.Date
 
@@ -84,33 +82,27 @@ class IssuanceService(
     }
 
     /**
-     * Get stored claims metadata for a credential type from encrypted SharedPreferences.
+     * Get all stored credential keys from the credential index.
      */
-    fun getStoredClaimsMetadata(credentialType: String? = null): List<ClaimMetadata>? {
-        if (_encryptedPrefs == null) return null
-        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
-        val storageKey = AppConfig.getClaimsMetadataStorageKey(type)
-        val metadataJson = encryptedPrefs.getString(storageKey, null) ?: return null
-        return try {
-            json.decodeFromString(ListSerializer(ClaimMetadata.serializer()), metadataJson)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse stored claims metadata", e)
-            null
-        }
+    fun getAllStoredCredentialKeys(): Set<String> {
+        if (_encryptedPrefs == null) return emptySet()
+        return encryptedPrefs.getStringSet(AppConfig.STORED_CREDENTIAL_INDEX, emptySet()) ?: emptySet()
     }
 
     /**
-     * Get stored credential display metadata for a credential type.
+     * Get stored credential bundle from encrypted SharedPreferences.
+     *
+     * @param credentialKey The composite credential key (e.g., "pda1_sdjwt").
+     * @return The deserialized StoredCredential, or null if not found
      */
-    fun getStoredCredentialDisplay(credentialType: String? = null): List<CredentialDisplay>? {
+    fun getStoredCredentialBundle(credentialKey: String): StoredCredential? {
         if (_encryptedPrefs == null) return null
-        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
-        val storageKey = AppConfig.getCredentialDisplayStorageKey(type)
-        val displayJson = encryptedPrefs.getString(storageKey, null) ?: return null
+        val storageKey = AppConfig.getCredentialStorageKey(credentialKey)
+        val bundleJson = encryptedPrefs.getString(storageKey, null) ?: return null
         return try {
-            json.decodeFromString(ListSerializer(CredentialDisplay.serializer()), displayJson)
+            json.decodeFromString(StoredCredential.serializer(), bundleJson)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse stored credential display", e)
+            Log.e(TAG, "Failed to parse stored credential bundle for key: $credentialKey", e)
             null
         }
     }
@@ -321,9 +313,8 @@ class IssuanceService(
     }
 
     /**
-     * Store credential in encrypted SharedPreferences.
-     * Uses credential type as part of the key for multi-credential support.
-     * Optionally stores claim metadata and display info from the credential configuration.
+     * Store credential as a single JSON bundle in encrypted SharedPreferences.
+     * Maintains a credential index set for enumeration.
      */
     fun storeCredential(
         credential: String,
@@ -331,97 +322,75 @@ class IssuanceService(
         credentialConfig: CredentialConfiguration? = null,
         format: String = AppConfig.FORMAT_SD_JWT
     ) {
-        val credentialType = AppConfig.extractCredentialType(credentialConfigurationId)
-        val storageKey = AppConfig.getCredentialStorageKey(credentialType)
-        encryptedPrefs.edit {
-            putString(storageKey, credential)
-            putString(AppConfig.getCredentialFormatStorageKey(credentialType), format)
-            val resolvedClaims = credentialConfig?.resolvedClaims()
-            if (resolvedClaims != null) {
-                val claimsJson = json.encodeToString(
-                    ListSerializer(ClaimMetadata.serializer()),
-                    resolvedClaims
-                )
-                putString(AppConfig.getClaimsMetadataStorageKey(credentialType), claimsJson)
-            }
-            val resolvedDisplay = credentialConfig?.resolvedDisplay()
-            if (resolvedDisplay != null) {
-                val displayJson = json.encodeToString(
-                    ListSerializer(CredentialDisplay.serializer()),
-                    resolvedDisplay
-                )
-                putString(AppConfig.getCredentialDisplayStorageKey(credentialType), displayJson)
-            }
-        }
-        Log.d(TAG, "Credential stored successfully with key: $storageKey, format: $format")
-    }
-
-    /**
-     * Get stored credential from encrypted SharedPreferences.
-     *
-     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
-     * @return The credential string, or null if not available or prefs not initialized
-     */
-    fun getStoredCredential(credentialType: String? = null): String? {
-        if (_encryptedPrefs == null) {
-            Log.d(TAG, "IssuanceService not initialized with Activity, cannot get stored credential")
-            return null
-        }
-
-        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
-        val storageKey = AppConfig.getCredentialStorageKey(type)
-        val credential = encryptedPrefs.getString(storageKey, null)
-
-        if (credential.isNullOrEmpty()) {
-            Log.d(TAG, "No stored credential found for type: $type")
-            return null
-        }
-
-        return credential
-    }
-
-    /**
-     * Get stored credential format from encrypted SharedPreferences.
-     *
-     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
-     * @return The format string ("dc+sd-jwt" or "mso_mdoc"), defaults to "dc+sd-jwt"
-     */
-    fun getStoredCredentialFormat(credentialType: String? = null): String {
-        if (_encryptedPrefs == null) return AppConfig.FORMAT_SD_JWT
-        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
-        return encryptedPrefs.getString(
-            AppConfig.getCredentialFormatStorageKey(type), AppConfig.FORMAT_SD_JWT
-        ) ?: AppConfig.FORMAT_SD_JWT
+        val credentialKey = AppConfig.extractCredentialKey(credentialConfigurationId)
+        val (issuedAt, expiresAt) = extractCredentialDates(credential, format)
+        val bundle = StoredCredential(
+            rawCredential = credential,
+            format = format,
+            claimsMetadata = credentialConfig?.resolvedClaims(),
+            displayMetadata = credentialConfig?.resolvedDisplay(),
+            issuedAt = issuedAt,
+            expiresAt = expiresAt
+        )
+        val storageKey = AppConfig.getCredentialStorageKey(credentialKey)
+        val bundleJson = json.encodeToString(StoredCredential.serializer(), bundle)
+        encryptedPrefs.edit { putString(storageKey, bundleJson) }
+        // Maintain the credential index
+        val currentIndex = encryptedPrefs.getStringSet(AppConfig.STORED_CREDENTIAL_INDEX, emptySet())?.toMutableSet() ?: mutableSetOf()
+        currentIndex.add(credentialKey)
+        encryptedPrefs.edit { putStringSet(AppConfig.STORED_CREDENTIAL_INDEX, currentIndex) }
+        Log.d(TAG, "Credential stored successfully with key: $credentialKey, format: $format")
     }
 
     /**
      * Remove stored credential from encrypted SharedPreferences.
      *
-     * @param credentialType The credential type (e.g., "pda1"). Defaults to current SCOPE.
+     * @param credentialKey The composite credential key (e.g., "pda1_sdjwt").
      */
-    fun removeCredential(credentialType: String? = null) {
-        val type = credentialType ?: AppConfig.extractCredentialType(AppConfig.SCOPE)
-        val storageKey = AppConfig.getCredentialStorageKey(type)
-        encryptedPrefs.edit {
-            remove(storageKey)
-            remove(AppConfig.getCredentialFormatStorageKey(type))
-            remove(AppConfig.getClaimsMetadataStorageKey(type))
-            remove(AppConfig.getCredentialDisplayStorageKey(type))
-        }
-        Log.d(TAG, "Credential and metadata removed for type: $type")
+    fun removeCredential(credentialKey: String) {
+        encryptedPrefs.edit { remove(AppConfig.getCredentialStorageKey(credentialKey)) }
+        // Update index
+        val currentIndex = encryptedPrefs.getStringSet(AppConfig.STORED_CREDENTIAL_INDEX, emptySet())?.toMutableSet() ?: mutableSetOf()
+        currentIndex.remove(credentialKey)
+        encryptedPrefs.edit { putStringSet(AppConfig.STORED_CREDENTIAL_INDEX, currentIndex) }
+        Log.d(TAG, "Credential removed for key: $credentialKey")
     }
 
     /**
-     * Decodes a credential, dispatching based on stored format.
+     * Decodes a credential, dispatching based on format.
      * For SD-JWT: extracts disclosed claims from disclosures.
      * For mDoc: decodes CBOR IssuerSigned structure to extract claims.
      */
-    fun decodeCredential(credential: String): Map<String, Any> {
-        val format = getStoredCredentialFormat()
+    fun decodeCredential(credential: String, format: String): Map<String, Any> {
         return if (format == AppConfig.FORMAT_MSO_MDOC) {
-            MDocCredentialService.decode(credential)
+            MDocCredentialService.decode(credential).claims
         } else {
             sdJwtCredentialService.decode(credential)
+        }
+    }
+
+    /**
+     * Extract issuance and expiration dates from a credential.
+     * For SD-JWT: reads iat/exp from the JWT payload.
+     * For mDoc: extracted from ValidityInfo during decode (single CBOR parse).
+     * Returns (issuedAtEpochSeconds, expiresAtEpochSeconds).
+     */
+    private fun extractCredentialDates(credential: String, format: String): Pair<Long?, Long?> {
+        return try {
+            if (format == AppConfig.FORMAT_MSO_MDOC) {
+                val result = MDocCredentialService.decode(credential)
+                result.issuedAt to result.expiresAt
+            } else {
+                val jwtPart = credential.substringBefore("~")
+                val signedJwt = SignedJWT.parse(jwtPart)
+                val claims = signedJwt.jwtClaimsSet
+                val iat = claims.issueTime?.time?.div(1000)
+                val exp = claims.expirationTime?.time?.div(1000)
+                iat to exp
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to extract credential dates", e)
+            null to null
         }
     }
 

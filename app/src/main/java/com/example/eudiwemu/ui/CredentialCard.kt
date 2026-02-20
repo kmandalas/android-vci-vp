@@ -2,6 +2,7 @@ package com.example.eudiwemu.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,20 +74,25 @@ fun CredentialCard(
     credentialDisplayName: String? = null,
     credentialFormat: String? = null,
     resolver: ClaimMetadataResolver? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    compact: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    issuedAt: Long? = null,
+    expiresAt: Long? = null
 ) {
     Card(
         modifier = Modifier
-            .padding(16.dp)
-            .fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(8.dp),
+            .padding(if (compact) 8.dp else 16.dp)
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        elevation = CardDefaults.cardElevation(if (compact) 4.dp else 8.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surface)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
+                    .padding(if (compact) 16.dp else 20.dp)
                     .fillMaxWidth()
             ) {
                 // Header with icon
@@ -98,14 +104,14 @@ fun CredentialCard(
                         imageVector = Icons.Default.AccountBox,
                         contentDescription = "Credential Icon",
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(if (compact) 40.dp else 48.dp)
                             .clip(CircleShape)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
                             text = credentialDisplayName ?: "PDA1 Credential",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         credentialFormat?.let { format ->
@@ -127,86 +133,117 @@ fun CredentialCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (resolver != null) {
-                    // Dynamic grouping from metadata
-                    val groups = resolver.groupByParent()
-                    groups.forEach { (parentName, childMetadata) ->
-                        val childKeys = childMetadata.mapNotNull { it.path.lastOrNull() }
-                        val hasClaimsInGroup = childKeys.any { claims.containsKey(it) }
-                        if (hasClaimsInGroup) {
-                            val groupDisplayName = parentName.split("_")
-                                .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
-                            ClaimGroupSection(
-                                groupName = groupDisplayName,
-                                icon = groupIcons[parentName],
-                                claims = claims,
-                                claimKeys = childKeys,
-                                resolver = resolver
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
-
-                    // Display any remaining claims not in metadata groups
-                    val groupedKeys = groups.values.flatten()
-                        .mapNotNull { it.path.lastOrNull() }.toSet()
-                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
-                    if (remainingClaims.isNotEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        remainingClaims.forEach { (key, value) ->
-                            ClaimRow(
-                                label = resolver.getDisplayNameByClaimName(key),
-                                value = value
-                            )
+                if (compact) {
+                    // In compact mode, show issuance and expiration dates
+                    if (issuedAt != null || expiresAt != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            issuedAt?.let {
+                                Text(
+                                    text = "Issued: ${formatEpochDate(it)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            expiresAt?.let {
+                                Text(
+                                    text = "Expires: ${formatEpochDate(it)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 } else {
-                    // Fallback: use hardcoded groups
-                    fallbackClaimGroups.forEach { (groupName, groupClaims) ->
-                        val hasClaimsInGroup = groupClaims.any { claims.containsKey(it) }
-                        if (hasClaimsInGroup) {
-                            ClaimGroupSection(
-                                groupName = groupName,
-                                icon = groupIcons[groupName],
-                                claims = claims,
-                                claimKeys = groupClaims,
-                                resolver = null
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                    }
+                    // Full mode — show all grouped claims
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // Display any remaining claims not in groups
-                    val groupedKeys = fallbackClaimGroups.values.flatten().toSet()
-                    val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
-                    if (remainingClaims.isNotEmpty()) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        remainingClaims.forEach { (key, value) ->
-                            ClaimRow(
-                                label = fallbackClaimLabels[key] ?: key,
-                                value = value
-                            )
+                    if (resolver != null) {
+                        val groups = resolver.groupByParent()
+                        groups.forEach { (parentName, childMetadata) ->
+                            val childKeys = childMetadata.mapNotNull { it.path.lastOrNull() }
+                            val hasClaimsInGroup = childKeys.any { claims.containsKey(it) }
+                            if (hasClaimsInGroup) {
+                                val groupDisplayName = parentName.split("_")
+                                    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                                ClaimGroupSection(
+                                    groupName = groupDisplayName,
+                                    icon = groupIcons[parentName],
+                                    claims = claims,
+                                    claimKeys = childKeys,
+                                    resolver = resolver
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+
+                        val groupedKeys = groups.values.flatten()
+                            .mapNotNull { it.path.lastOrNull() }.toSet()
+                        val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                        if (remainingClaims.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            remainingClaims.forEach { (key, value) ->
+                                ClaimRow(
+                                    label = resolver.getDisplayNameByClaimName(key),
+                                    value = value
+                                )
+                            }
+                        }
+                    } else {
+                        fallbackClaimGroups.forEach { (groupName, groupClaims) ->
+                            val hasClaimsInGroup = groupClaims.any { claims.containsKey(it) }
+                            if (hasClaimsInGroup) {
+                                ClaimGroupSection(
+                                    groupName = groupName,
+                                    icon = groupIcons[groupName],
+                                    claims = claims,
+                                    claimKeys = groupClaims,
+                                    resolver = null
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+
+                        val groupedKeys = fallbackClaimGroups.values.flatten().toSet()
+                        val remainingClaims = claims.filterKeys { !groupedKeys.contains(it) }
+                        if (remainingClaims.isNotEmpty()) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                            remainingClaims.forEach { (key, value) ->
+                                ClaimRow(
+                                    label = fallbackClaimLabels[key] ?: key,
+                                    value = value
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            onDelete?.let { deleteAction ->
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete credential",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(24.dp)
-                        .clickable { deleteAction() }
-                )
+            if (!compact) {
+                onDelete?.let { deleteAction ->
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete credential",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp)
+                            .size(24.dp)
+                            .clickable { deleteAction() }
+                    )
+                }
             }
         }
     }
+}
+
+private fun formatEpochDate(epochSeconds: Long): String {
+    val instant = java.time.Instant.ofEpochSecond(epochSeconds)
+    val date = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    return java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy").format(date)
 }
 
 @Composable

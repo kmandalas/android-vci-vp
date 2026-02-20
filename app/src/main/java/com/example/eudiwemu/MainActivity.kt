@@ -15,6 +15,9 @@ import androidx.navigation.compose.rememberNavController
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.example.eudiwemu.ui.CredentialDetailScreen
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
 import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
@@ -28,9 +31,11 @@ class MainActivity : FragmentActivity() {
     private val wiaService: WiaService by inject()
 
     private val isAuthenticated = mutableStateOf(false)
+    private val currentIntent = mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentIntent.value = intent
 
         lifecycleScope.launch {
             try {
@@ -61,7 +66,7 @@ class MainActivity : FragmentActivity() {
                 ) {
                     MainNavHost(
                         activity = this@MainActivity,
-                        intent = intent,
+                        intent = currentIntent.value,
                         wuaService = wuaService,
                         wiaService = wiaService,
                         isAuthenticated = isAuthenticated.value,
@@ -69,6 +74,11 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        currentIntent.value = intent
     }
 }
 
@@ -95,11 +105,25 @@ fun MainNavHost(
             )
         }
         composable("wallet_app_screen") {
-            val walletViewModel: WalletViewModel = koinViewModel()
+            val walletViewModel: WalletViewModel = koinViewModel(viewModelStoreOwner = activity)
             WalletScreen(
                 activity = activity,
                 intent = intent,
-                viewModel = walletViewModel
+                viewModel = walletViewModel,
+                navController = navController
+            )
+        }
+        composable(
+            "credential_detail/{credentialKey}",
+            arguments = listOf(navArgument("credentialKey") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val credentialKey = backStackEntry.arguments?.getString("credentialKey") ?: return@composable
+            val walletViewModel: WalletViewModel = koinViewModel(viewModelStoreOwner = activity)
+            CredentialDetailScreen(
+                credentialKey = credentialKey,
+                viewModel = walletViewModel,
+                activity = activity,
+                onBack = { navController.popBackStack() }
             )
         }
     }

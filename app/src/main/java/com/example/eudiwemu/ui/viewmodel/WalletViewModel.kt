@@ -35,7 +35,10 @@ class WalletViewModel(
     private val wiaService: WiaService
 ) : ViewModel() {
 
-    var credentialState by mutableStateOf(CredentialUiState())
+    var credentialList by mutableStateOf<List<CredentialUiState>>(emptyList())
+        private set
+
+    var selectedCredentialKey by mutableStateOf<String?>(null)
         private set
 
     var attestationState by mutableStateOf(AttestationState())
@@ -69,6 +72,14 @@ class WalletViewModel(
 
     fun dismissMDocDialog() {
         vpRequestState = vpRequestState.copy(mdocAvailableClaims = null)
+    }
+
+    fun selectCredential(credentialKey: String) {
+        selectedCredentialKey = credentialKey
+    }
+
+    fun clearSelection() {
+        selectedCredentialKey = null
     }
 
     fun initialize(activity: FragmentActivity) {
@@ -117,26 +128,35 @@ class WalletViewModel(
                     }
                 }
 
-                // Load VC and its metadata
-                val storedCredential = issuanceService.getStoredCredential()
-                if (!storedCredential.isNullOrEmpty()) {
-                    try {
-                        val claims = issuanceService.decodeCredential(storedCredential)
-                        val storedClaimsMetadata = issuanceService.getStoredClaimsMetadata()
-                        val storedDisplay = issuanceService.getStoredCredentialDisplay()
-                        credentialState = CredentialUiState(
-                            claims = claims,
-                            claimResolver = ClaimMetadataResolver.fromNullable(storedClaimsMetadata),
-                            credentialDisplayName = storedDisplay?.firstOrNull()?.name
-                        )
-                    } catch (e: Exception) {
-                        Log.e("WalletApp", "Error decoding stored VC", e)
-                    }
-                }
+                // Load all stored credentials
+                loadAllCredentials()
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error initializing services: $e")
             }
         }
+    }
+
+    private fun loadAllCredentials() {
+        val keys = issuanceService.getAllStoredCredentialKeys()
+        val list = keys.mapNotNull { credentialKey ->
+            try {
+                val bundle = issuanceService.getStoredCredentialBundle(credentialKey) ?: return@mapNotNull null
+                val claims = issuanceService.decodeCredential(bundle.rawCredential, bundle.format)
+                CredentialUiState(
+                    credentialKey = credentialKey,
+                    credentialFormat = bundle.format,
+                    claims = claims,
+                    claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
+                    credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name,
+                    issuedAt = bundle.issuedAt,
+                    expiresAt = bundle.expiresAt
+                )
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error decoding stored credential: $credentialKey", e)
+                null
+            }
+        }
+        credentialList = list
     }
 
     fun handleDeepLink(intent: Intent?, activity: FragmentActivity) {
@@ -180,9 +200,10 @@ class WalletViewModel(
 
                 issuanceState = issuanceState.copy(isLoading = false)
                 if (vcResult.isSuccess) {
-                    val (message, claims) = vcResult.getOrNull()!!
-                    updateCredentialStateAfterIssuance(claims)
+                    val (message, credentialKey) = vcResult.getOrNull()!!
+                    addOrReplaceCredentialInList(credentialKey)
                     _events.send(WalletEvent.ShowSnackbar(message))
+                    _events.send(WalletEvent.NavigateToDetail(credentialKey))
                 } else {
                     _events.send(WalletEvent.ShowSnackbar("❌ Error: ${vcResult.exceptionOrNull()?.message}"))
                 }
@@ -224,22 +245,31 @@ class WalletViewModel(
             )
 
             val dcqlFormat = vpTokenService.extractFormatFromDcql(requestObject)
-            val credentialFormat = issuanceService.getStoredCredentialFormat()
-            Log.d("WalletApp", "VP format - DCQL: $dcqlFormat, stored: $credentialFormat")
+            Log.d("WalletApp", "VP DCQL requested format: $dcqlFormat")
 
-            val storedCredential = withContext(Dispatchers.IO) {
-                issuanceService.getStoredCredential().orEmpty()
+            // Find matching credential by format
+            val matchedCredential = credentialList.find { it.credentialFormat == dcqlFormat }
+            if (matchedCredential == null) {
+                Log.w("WalletApp", "No stored credential matches DCQL format: $dcqlFormat")
+                _events.send(WalletEvent.ShowSnackbar("⚠️ No matching credential for requested format"))
+                return
             }
 
-            if (credentialFormat == AppConfig.FORMAT_MSO_MDOC) {
+            val targetKey = matchedCredential.credentialKey
+            vpRequestState = vpRequestState.copy(targetCredentialKey = targetKey)
+
+            val bundle = withContext(Dispatchers.IO) {
+                issuanceService.getStoredCredentialBundle(targetKey)
+            } ?: return
+
+            if (dcqlFormat == AppConfig.FORMAT_MSO_MDOC) {
                 val requestedClaims = requestObject.dcql_query.credentials.firstOrNull()
                     ?.claims?.mapNotNull { it.path.lastOrNull() } ?: emptyList()
                 Log.d("WalletApp", "mDoc requested claims: $requestedClaims")
                 vpRequestState = vpRequestState.copy(mdocAvailableClaims = requestedClaims)
             } else {
-                val claimsMetadata = issuanceService.getStoredClaimsMetadata()
                 val result = withContext(Dispatchers.IO) {
-                    vpTokenService.extractRequestedClaims(requestObject, storedCredential, claimsMetadata)
+                    vpTokenService.extractRequestedClaims(requestObject, bundle.rawCredential, bundle.claimsMetadata)
                 }
                 vpRequestState = vpRequestState.copy(
                     selectedClaims = result.disclosures,
@@ -273,9 +303,10 @@ class WalletViewModel(
 
                     issuanceState = issuanceState.copy(isLoading = false)
                     if (result.isSuccess) {
-                        val (message, claims) = result.getOrNull()!!
-                        updateCredentialStateAfterIssuance(claims)
+                        val (message, credentialKey) = result.getOrNull()!!
+                        addOrReplaceCredentialInList(credentialKey)
                         _events.send(WalletEvent.ShowSnackbar(message))
+                        _events.send(WalletEvent.NavigateToDetail(credentialKey))
                     } else {
                         val errorMsg = result.exceptionOrNull()?.message ?: ""
                         if (isAuthError(errorMsg)) {
@@ -317,11 +348,14 @@ class WalletViewModel(
         }
     }
 
-    fun deleteCredential() {
+    fun deleteCredential(credentialKey: String) {
         viewModelScope.launch {
             try {
-                issuanceService.removeCredential()
-                credentialState = CredentialUiState()
+                issuanceService.removeCredential(credentialKey)
+                credentialList = credentialList.filter { it.credentialKey != credentialKey }
+                if (selectedCredentialKey == credentialKey) {
+                    selectedCredentialKey = null
+                }
                 _events.send(WalletEvent.ShowSnackbar("🗑️ Credential deleted"))
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error deleting credential", e)
@@ -334,9 +368,12 @@ class WalletViewModel(
         dismissSdJwtDialog()
         viewModelScope.launch {
             try {
-                val storedCredential = withContext(Dispatchers.IO) {
-                    issuanceService.getStoredCredential().orEmpty()
-                }
+                val targetKey = vpRequestState.targetCredentialKey
+                    ?: throw IllegalStateException("No target credential for VP")
+                val bundle = withContext(Dispatchers.IO) {
+                    issuanceService.getStoredCredentialBundle(targetKey)
+                } ?: throw IllegalStateException("Credential not found: $targetKey")
+                val storedCredential = bundle.rawCredential
                 val vpToken = withContext(Dispatchers.IO) {
                     vpTokenService.createSdJwtVpToken(
                         storedCredential, selected,
@@ -362,9 +399,12 @@ class WalletViewModel(
         dismissMDocDialog()
         viewModelScope.launch {
             try {
-                val storedCredential = withContext(Dispatchers.IO) {
-                    issuanceService.getStoredCredential().orEmpty()
-                }
+                val targetKey = vpRequestState.targetCredentialKey
+                    ?: throw IllegalStateException("No target credential for VP")
+                val bundle = withContext(Dispatchers.IO) {
+                    issuanceService.getStoredCredentialBundle(targetKey)
+                } ?: throw IllegalStateException("Credential not found: $targetKey")
+                val storedCredential = bundle.rawCredential
 
                 val ephemeralJwk = vpRequestState.authRequest?.client_metadata?.jwks?.keys?.firstOrNull()
 
@@ -446,9 +486,12 @@ class WalletViewModel(
 
         viewModelScope.launch {
             try {
-                val storedCredential = withContext(Dispatchers.IO) {
-                    issuanceService.getStoredCredential().orEmpty()
-                }
+                val credKey = selectedCredentialKey
+                    ?: throw IllegalStateException("No credential selected for proximity presentation")
+                val bundle = withContext(Dispatchers.IO) {
+                    issuanceService.getStoredCredentialBundle(credKey)
+                } ?: throw IllegalStateException("Credential not found: $credKey")
+                val storedCredential = bundle.rawCredential
                 val sessionTranscript = proximityService?.sessionTranscript
                     ?: throw IllegalStateException("Session transcript not available")
 
@@ -464,7 +507,7 @@ class WalletViewModel(
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error sending proximity response", e)
                 proximityState = proximityState.copy(status = "Error: ${e.message}")
-                _events.send(WalletEvent.ShowSnackbar("Error: ${e.message}"))
+                _events.send(WalletEvent.ShowSnackbar("❌ Error: ${e.message}"))
             }
         }
     }
@@ -479,11 +522,24 @@ class WalletViewModel(
         return issuanceService.flattenClaimsForDisplay(claims)
     }
 
-    fun getStoredCredentialFormat(): String {
-        return issuanceService.getStoredCredentialFormat()
-    }
-
     // --- Private helpers ---
+
+    private fun addOrReplaceCredentialInList(credentialKey: String) {
+        try {
+            val bundle = issuanceService.getStoredCredentialBundle(credentialKey) ?: return
+            val claims = issuanceService.decodeCredential(bundle.rawCredential, bundle.format)
+            val newState = CredentialUiState(
+                credentialKey = credentialKey,
+                credentialFormat = bundle.format,
+                claims = claims,
+                claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
+                credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name
+            )
+            credentialList = credentialList.filter { it.credentialKey != credentialKey } + newState
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Error loading credential after issuance: $credentialKey", e)
+        }
+    }
 
     private suspend fun startAuthorizationFlowWithPar(
         activity: FragmentActivity,
@@ -539,11 +595,14 @@ class WalletViewModel(
         activity.startActivity(intent)
     }
 
+    /**
+     * Returns the credential key (not the raw credential) on success.
+     */
     private suspend fun submitCredentialRequest(
         activity: FragmentActivity,
         credentialConfig: com.example.eudiwemu.dto.CredentialConfiguration? = null,
         format: String = AppConfig.FORMAT_SD_JWT
-    ): Result<Pair<String, Map<String, Any>>> {
+    ): Result<Pair<String, String>> {
         return try {
             val context = activity.applicationContext
             val prefs = getEncryptedPrefs(context, activity)
@@ -560,12 +619,15 @@ class WalletViewModel(
 
             val nonce = issuanceService.getNonce(accessToken)
             val jwtProof = issuanceService.createJwtProof(nonce, storedWua)
-            val storedCredential = issuanceService.requestCredential(
+            issuanceService.requestCredential(
                 accessToken, jwtProof, credentialConfig, format
             )
-            val claims = issuanceService.decodeCredential(storedCredential)
 
-            Result.success("✅ VC stored securely" to claims)
+            val configId = if (format == AppConfig.FORMAT_MSO_MDOC)
+                AppConfig.MDOC_CREDENTIAL_CONFIG_ID else AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
+            val credentialKey = AppConfig.extractCredentialKey(configId)
+
+            Result.success("✅ VC stored securely" to credentialKey)
         } catch (e: Exception) {
             Log.e("WalletApp", "Error requesting VC", e)
             Result.failure(e)
@@ -586,15 +648,6 @@ class WalletViewModel(
         } catch (e: Exception) {
             _events.send(WalletEvent.ShowSnackbar("📋 Verifier Response: $serverResponse"))
         }
-    }
-
-    private fun updateCredentialStateAfterIssuance(claims: Map<String, Any>) {
-        val storedMetadata = issuanceService.getStoredClaimsMetadata()
-        credentialState = CredentialUiState(
-            claims = claims,
-            claimResolver = ClaimMetadataResolver.fromNullable(storedMetadata),
-            credentialDisplayName = issuanceService.getStoredCredentialDisplay()?.firstOrNull()?.name
-        )
     }
 
     private fun isAuthError(errorMessage: String): Boolean {

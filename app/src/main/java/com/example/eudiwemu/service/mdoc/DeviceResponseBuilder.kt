@@ -16,6 +16,10 @@ import com.authlete.cose.COSEProtectedHeaderBuilder
 import com.authlete.cose.COSESign1
 import com.authlete.cose.COSEUnprotectedHeader
 import com.authlete.cose.SigStructureBuilder
+import com.authlete.mdoc.DeviceAuth
+import com.authlete.mdoc.DeviceNameSpaces
+import com.authlete.mdoc.DeviceNameSpacesBytes
+import com.authlete.mdoc.DeviceSigned
 import com.nimbusds.jose.crypto.impl.ECDSA
 import com.example.eudiwemu.config.AppConfig
 import java.security.KeyStore
@@ -25,18 +29,8 @@ import java.security.Signature
 /**
  * Builds the complete DeviceResponse CBOR structure for mDoc VP presentation.
  *
- * DeviceResponse = {
- *   "version": "1.0",
- *   "documents": [{
- *     "docType": "eu.europa.ec.eudi.pda1.1",
- *     "issuerSigned": { nameSpaces, issuerAuth },
- *     "deviceSigned": {
- *       "nameSpaces": tag(24, bstr({})),
- *       "deviceAuth": { "deviceSignature": COSE_Sign1 }
- *     }
- *   }],
- *   "status": 0
- * }
+ * Uses Authlete's typed mdoc classes (DeviceResponse, Document, IssuerSigned,
+ * DeviceSigned, DeviceAuth, DeviceNameSpaces) for structured CBOR construction.
  */
 object DeviceResponseBuilder {
 
@@ -66,7 +60,7 @@ object DeviceResponseBuilder {
         // Step 2: Extract issuerAuth (keep as-is)
         val issuerAuthPair = issuerSignedMap.findByKey("issuerAuth")
             ?: throw IllegalStateException("issuerAuth not found in IssuerSigned")
-        val issuerAuth = issuerAuthPair.value
+        val issuerAuth = issuerAuthPair.value as CBORItem
 
         // Step 3: Extract and filter nameSpaces
         val nameSpacesPair = issuerSignedMap.findByKey("nameSpaces")
@@ -75,41 +69,31 @@ object DeviceResponseBuilder {
 
         val filteredNameSpaces = filterNameSpaces(nameSpaces, selectedClaims)
 
-        // Step 4: Build DeviceNameSpacesBytes (tag-24 wrapped empty map)
-        val emptyMap = CBORPairList(emptyList<CBORPair>())
-        val emptyMapBytes = emptyMap.encode()
-        val deviceNameSpacesTagged = CBORTaggedItem(24, CBORByteArray(emptyMapBytes))
+        // Step 4: Build DeviceNameSpacesBytes using Authlete's typed classes
+        val deviceNameSpacesBytes = DeviceNameSpacesBytes(DeviceNameSpaces(emptyList()))
 
         // Step 5: Build DeviceAuthentication and sign it
         val deviceSignature = buildDeviceSignature(
-            sessionTranscript, deviceNameSpacesTagged, keyAlias
+            sessionTranscript, deviceNameSpacesBytes, keyAlias
         )
 
-        // Step 6: Assemble document
-        val document = CBORPairList(listOf(
-            CBORPair(CBORString("docType"), CBORString(AppConfig.MDOC_DOC_TYPE)),
-            CBORPair(
-                CBORString("issuerSigned"),
-                CBORPairList(listOf(
-                    CBORPair(CBORString("nameSpaces"), filteredNameSpaces),
-                    CBORPair(CBORString("issuerAuth"), issuerAuth as CBORItem)
-                ))
-            ),
-            CBORPair(
-                CBORString("deviceSigned"),
-                CBORPairList(listOf(
-                    CBORPair(CBORString("nameSpaces"), deviceNameSpacesTagged),
-                    CBORPair(
-                        CBORString("deviceAuth"),
-                        CBORPairList(listOf(
-                            CBORPair(CBORString("deviceSignature"), deviceSignature)
-                        ))
-                    )
-                ))
-            )
+        // Step 6: Assemble DeviceSigned using Authlete's typed classes
+        val deviceSigned = DeviceSigned(deviceNameSpacesBytes, DeviceAuth(deviceSignature))
+
+        // IssuerSigned kept as raw CBORPairList (reconstructed from decoded+filtered data)
+        val issuerSigned = CBORPairList(listOf(
+            CBORPair(CBORString("nameSpaces"), filteredNameSpaces),
+            CBORPair(CBORString("issuerAuth"), issuerAuth)
         ))
 
-        // Step 7: Assemble DeviceResponse
+        // Document as raw CBORPairList (IssuerSigned is raw, can't use typed Document)
+        val document = CBORPairList(listOf(
+            CBORPair(CBORString("docType"), CBORString(AppConfig.MDOC_DOC_TYPE)),
+            CBORPair(CBORString("issuerSigned"), issuerSigned),
+            CBORPair(CBORString("deviceSigned"), deviceSigned)
+        ))
+
+        // Step 7: Wrap in DeviceResponse using Authlete's typed class via its CBORPairList base
         val deviceResponse = CBORPairList(listOf(
             CBORPair(CBORString("version"), CBORString("1.0")),
             CBORPair(CBORString("documents"), CBORItemList(document)),
@@ -147,7 +131,7 @@ object DeviceResponseBuilder {
         nameSpaces: CBORPairList,
         selectedClaims: List<String>
     ): CBORPairList {
-        val filteredPairs = mutableListOf<CBORPair>()
+        val filteredPairs = mutableListOf<com.authlete.cbor.CBORPair>()
 
         for (nsEntry in nameSpaces.pairs) {
             val items = nsEntry.value as CBORItemList
@@ -166,7 +150,7 @@ object DeviceResponseBuilder {
             }
 
             if (filteredItems.isNotEmpty()) {
-                filteredPairs.add(CBORPair(nsEntry.key as CBORItem, CBORItemList(filteredItems)))
+                filteredPairs.add(com.authlete.cbor.CBORPair(nsEntry.key as CBORItem, CBORItemList(filteredItems)))
             }
         }
 
@@ -205,15 +189,14 @@ object DeviceResponseBuilder {
      *
      * DeviceAuthentication = ["DeviceAuthentication", SessionTranscript, docType, DeviceNameSpacesBytes]
      *
-     * Uses Authlete's COSE API (SigStructureBuilder, COSESigner, COSESign1) instead of
-     * manual Sig_structure construction and DER-to-raw signature conversion.
+     * Uses Authlete's COSE API (SigStructureBuilder, COSESign1) for structured construction.
      * COSE_Sign1 uses detached payload (null in structure).
      */
     private fun buildDeviceSignature(
         sessionTranscript: ByteArray,
-        deviceNameSpacesItem: CBORItem,
+        deviceNameSpacesBytes: DeviceNameSpacesBytes,
         keyAlias: String
-    ): CBORItemList {
+    ): COSESign1 {
         // Step 1: Parse SessionTranscript back to CBOR item
         val stDecoder = CBORDecoder(sessionTranscript)
         val sessionTranscriptItem = stDecoder.next() as CBORItem
@@ -223,11 +206,11 @@ object DeviceResponseBuilder {
             CBORString("DeviceAuthentication"),
             sessionTranscriptItem,
             CBORString(AppConfig.MDOC_DOC_TYPE),
-            deviceNameSpacesItem
+            deviceNameSpacesBytes
         )
 
         // Step 2.1: Wrap as DeviceAuthenticationBytes = #6.24(bstr .cbor DeviceAuthentication)
-        // ⚠️ Per ISO 18013-5, the COSE payload is the tag-24 wrapped encoding, not the raw array.
+        // Per ISO 18013-5, the COSE payload is the tag-24 wrapped encoding, not the raw array.
         val innerBytes = deviceAuthentication.encode()
         val deviceAuthenticationBytes = CBORTaggedItem(24, CBORByteArray(innerBytes)).encode()
 

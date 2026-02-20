@@ -7,9 +7,13 @@ import com.example.eudiwemu.service.mdoc.DeviceRequestParser
 import com.example.eudiwemu.util.ClaimMetadataResolver
 
 data class CredentialUiState(
+    val credentialKey: String = "",
+    val credentialFormat: String = "",
     val claims: Map<String, Any>? = null,
     val claimResolver: ClaimMetadataResolver? = null,
-    val credentialDisplayName: String? = null
+    val credentialDisplayName: String? = null,
+    val issuedAt: Long? = null,
+    val expiresAt: Long? = null
 )
 
 data class AttestationState(
@@ -36,7 +40,8 @@ data class VpRequestState(
     val authRequest: AuthorizationRequestResponse? = null,
     val selectedClaims: List<Disclosure>? = null,
     val mdocAvailableClaims: List<String>? = null,
-    val vpClaimResolver: ClaimMetadataResolver? = null
+    val vpClaimResolver: ClaimMetadataResolver? = null,
+    val targetCredentialKey: String? = null
 )
 
 data class ProximityState(
@@ -50,4 +55,5 @@ data class ProximityState(
 sealed class WalletEvent {
     data class ShowSnackbar(val message: String) : WalletEvent()
     data class OpenBrowser(val uri: String) : WalletEvent()
+    data class NavigateToDetail(val credentialKey: String) : WalletEvent()
 }
