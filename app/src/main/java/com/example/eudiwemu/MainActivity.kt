@@ -31,7 +31,7 @@ class MainActivity : FragmentActivity() {
     private val wiaService: WiaService by inject()
 
     private val isAuthenticated = mutableStateOf(false)
-    private val currentIntent = mutableStateOf<Intent?>(null)
+    val currentIntent = mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

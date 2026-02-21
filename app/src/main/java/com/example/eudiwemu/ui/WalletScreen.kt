@@ -58,7 +58,11 @@ fun WalletScreen(
 
     // Handle deep links
     LaunchedEffect(intent) {
-        viewModel.handleDeepLink(intent, activity)
+        if (intent?.data != null) {
+            viewModel.handleDeepLink(intent, activity)
+            // Clear the intent so it's not re-processed on recomposition
+            (activity as? com.example.eudiwemu.MainActivity)?.currentIntent?.value = null
+        }
     }
 
     // Collect one-shot events

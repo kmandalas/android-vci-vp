@@ -89,23 +89,25 @@ class WalletViewModel(
                 wiaService.initWithActivity(activity)
                 issuanceService.initWithActivity(activity)
 
-                // Fetch issuer metadata for dynamic dropdown
-                try {
-                    val metadata = withContext(Dispatchers.IO) {
-                        issuanceService.fetchIssuerMetadata()
+                // Fetch issuer metadata for dynamic dropdown (skip if already cached)
+                if (issuanceState.credentialConfigs.isEmpty()) {
+                    try {
+                        val metadata = withContext(Dispatchers.IO) {
+                            issuanceService.fetchIssuerMetadata()
+                        }
+                        val configs = metadata.credential_configurations_supported
+                        val dynamicTypes = configs.mapNotNull { (configId, config) ->
+                            val displayName = config.resolvedDisplay()?.firstOrNull()?.name
+                            if (displayName != null) displayName to configId else null
+                        }.toMap()
+                        issuanceState = issuanceState.copy(
+                            credentialConfigs = configs,
+                            credentialTypes = dynamicTypes.ifEmpty { issuanceState.credentialTypes }
+                        )
+                        Log.d("WalletApp", "Loaded ${configs.size} credential configurations from issuer metadata")
+                    } catch (e: Exception) {
+                        Log.w("WalletApp", "Failed to fetch issuer metadata, using fallback dropdown", e)
                     }
-                    val configs = metadata.credential_configurations_supported
-                    val dynamicTypes = configs.mapNotNull { (configId, config) ->
-                        val displayName = config.resolvedDisplay()?.firstOrNull()?.name
-                        if (displayName != null) displayName to configId else null
-                    }.toMap()
-                    issuanceState = issuanceState.copy(
-                        credentialConfigs = configs,
-                        credentialTypes = dynamicTypes.ifEmpty { issuanceState.credentialTypes }
-                    )
-                    Log.d("WalletApp", "Loaded ${configs.size} credential configurations from issuer metadata")
-                } catch (e: Exception) {
-                    Log.w("WalletApp", "Failed to fetch issuer metadata, using fallback dropdown", e)
                 }
 
                 // Load WUA
