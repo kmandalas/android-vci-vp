@@ -5,17 +5,21 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -109,19 +113,22 @@ fun CredentialDetailScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(
+            ExtendedFloatingActionButton(
                 onClick = {
                     val qrIntent = Intent(context, QrScannerActivity::class.java)
                     activity.startActivity(qrIntent)
-                }
-            ) {
-                Text("Scan QR")
-            }
+                },
+                icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                text = { Text("Scan QR Code") },
+                modifier = Modifier
+                    .padding(horizontal = 32.dp)
+                    .fillMaxWidth()
+            )
 
             // Show "Present in Person" button only for mDoc credentials
             if (credential.credentialFormat == AppConfig.FORMAT_MSO_MDOC) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(
+                ExtendedFloatingActionButton(
                     onClick = {
                         val allGranted = blePermissions.all { perm ->
                             context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
@@ -131,10 +138,13 @@ fun CredentialDetailScreen(
                         } else {
                             blePermissionLauncher.launch(blePermissions)
                         }
-                    }
-                ) {
-                    Text("Present in Person")
-                }
+                    },
+                    icon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null) },
+                    text = { Text("Present in Person") },
+                    modifier = Modifier
+                        .padding(horizontal = 32.dp)
+                        .fillMaxWidth()
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

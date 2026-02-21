@@ -29,16 +29,16 @@ android {
         debug {
             isMinifyEnabled = false
             // Uses LOCAL_IP from gradle.properties
-//            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
-//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
-//            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
-//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
+            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
 
             // Uses render.com backend
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
-            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
+//            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
+//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
+//            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
         }
         release {
             isMinifyEnabled = true
@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("androidx.compose.material:material-icons-extended")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
