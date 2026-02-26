@@ -13,10 +13,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
+import com.example.eudiwemu.QrScannerActivity
 import com.example.eudiwemu.ui.viewmodel.WalletEvent
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -88,7 +91,21 @@ fun WalletScreen(
     val vpState = viewModel.vpRequestState
 
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            if (credentialList.isNotEmpty()) {
+                FloatingActionButton(
+                    onClick = {
+                        val qrIntent = Intent(context, QrScannerActivity::class.java)
+                        activity.startActivity(qrIntent)
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR Code")
+                }
+            }
+        }
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -181,7 +198,7 @@ fun WalletScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(88.dp))
             }
         }
     }

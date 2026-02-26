@@ -1,11 +1,9 @@
 package com.example.eudiwemu.ui
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BluetoothSearching
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -32,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
-import com.example.eudiwemu.QrScannerActivity
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -110,20 +106,6 @@ fun CredentialDetailScreen(
                     }
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            ExtendedFloatingActionButton(
-                onClick = {
-                    val qrIntent = Intent(context, QrScannerActivity::class.java)
-                    activity.startActivity(qrIntent)
-                },
-                icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
-                text = { Text("Scan QR Code") },
-                modifier = Modifier
-                    .padding(horizontal = 32.dp)
-                    .fillMaxWidth()
-            )
 
             // Show "Present in Person" button only for mDoc credentials
             if (credential.credentialFormat == AppConfig.FORMAT_MSO_MDOC) {
