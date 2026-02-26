@@ -75,6 +75,7 @@ fun WalletScreen(
                     context.startActivity(browseIntent)
                 }
                 is WalletEvent.NavigateToDetail -> {
+                    viewModel.selectCredential(event.credentialKey)
                     navController.navigate("credential_detail/${event.credentialKey}")
                 }
             }
