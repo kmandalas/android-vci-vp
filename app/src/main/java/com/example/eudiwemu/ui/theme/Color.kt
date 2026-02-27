@@ -2,10 +2,10 @@ package com.example.eudiwemu.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Orange80 = Color(0xFFFFB74D) // Light orange
-val OrangeGrey80 = Color(0xFFE0C2A2) // Muted warm neutral
-val Coral80 = Color(0xFFFF8A65) // Warm coral
+val NavyBlue80 = Color(0xFF7EAED4) // Light navy blue
+val Green80 = Color(0xFF81C784) // Light green
+val LightBlue80 = Color(0xFF90CAF9) // Light accent blue
 
-val Orange40 = Color(0xFFF57C00) // Deep orange
-val OrangeGrey40 = Color(0xFF8D6E63) // Muted brown-grey
-val Coral40 = Color(0xFFD84315) // Deep coral
+val NavyBlue40 = Color(0xFF1B3A5C) // Deep navy blue
+val Green40 = Color(0xFF2E6B3A) // Dark green
+val LightBlue40 = Color(0xFF3A6B8C) // Accent blue

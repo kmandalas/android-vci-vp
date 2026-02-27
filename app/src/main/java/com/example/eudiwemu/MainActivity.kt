@@ -20,7 +20,7 @@ import androidx.navigation.navArgument
 import com.example.eudiwemu.ui.CredentialDetailScreen
 import com.example.eudiwemu.ui.LoginScreen
 import com.example.eudiwemu.ui.WalletScreen
-import com.example.eudiwemu.ui.theme.EUDIWEMUTheme
+import com.example.eudiwemu.ui.theme.KWalletTheme
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -60,7 +60,7 @@ class MainActivity : FragmentActivity() {
                 isAuthenticated.value = false
             }
             setContent {
-                EUDIWEMUTheme(
+                KWalletTheme(
                     darkTheme = false,
                     dynamicColor = false
                 ) {

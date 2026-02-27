@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EUDIWEMUTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.KWalletTheme" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Customize default colors if needed -->
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>

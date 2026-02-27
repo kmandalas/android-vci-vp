@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EUDIW EMU"
+rootProject.name = "K-Wallet"
 include(":app")
