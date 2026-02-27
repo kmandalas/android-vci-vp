@@ -53,6 +53,12 @@ class WalletViewModel(
     var proximityState by mutableStateOf(ProximityState())
         private set
 
+    var bannerMessage by mutableStateOf<String?>(null)
+        private set
+
+    fun showBanner(message: String) { bannerMessage = message }
+    fun clearBanner() { bannerMessage = null }
+
     private var proximityService: ProximityPresentationService? = null
 
     private val _events = Channel<WalletEvent>(Channel.BUFFERED)

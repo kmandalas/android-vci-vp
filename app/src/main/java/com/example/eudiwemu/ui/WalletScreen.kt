@@ -23,9 +23,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,8 +44,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
@@ -51,7 +63,6 @@ fun WalletScreen(
     navController: NavController
 ) {
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
     var expanded by remember { mutableStateOf(false) }
 
     // Initialize on first composition
@@ -72,7 +83,7 @@ fun WalletScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is WalletEvent.ShowSnackbar -> snackbarHostState.showSnackbar(event.message)
+                is WalletEvent.ShowSnackbar -> { viewModel.showBanner(event.message) }
                 is WalletEvent.OpenBrowser -> {
                     val browseIntent = Intent(Intent.ACTION_VIEW, event.uri.toUri())
                     context.startActivity(browseIntent)
@@ -90,14 +101,28 @@ fun WalletScreen(
     val issuanceState = viewModel.issuanceState
     val vpState = viewModel.vpRequestState
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
             if (credentialList.isNotEmpty()) {
+                val pulse = rememberInfiniteTransition(label = "fab-pulse")
+                val scale by pulse.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.08f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(800),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "fab-scale"
+                )
                 FloatingActionButton(
                     onClick = {
                         val qrIntent = Intent(context, QrScannerActivity::class.java)
                         activity.startActivity(qrIntent)
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
                     },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -202,6 +227,8 @@ fun WalletScreen(
             }
         }
     }
+    TopBanner(viewModel = viewModel, modifier = Modifier.align(Alignment.TopCenter))
+    }
 
     // SD-JWT claim selection dialog
     vpState.selectedClaims?.let { claims ->
@@ -226,5 +253,40 @@ fun WalletScreen(
             onDismiss = { viewModel.dismissMDocDialog() },
             onConfirm = { selectedNames -> viewModel.submitMDocVpToken(selectedNames) }
         )
+    }
+}
+
+@Composable
+fun TopBanner(viewModel: WalletViewModel, modifier: Modifier = Modifier) {
+    val message = viewModel.bannerMessage
+
+    LaunchedEffect(message) {
+        if (message != null) {
+            delay(3000)
+            viewModel.clearBanner()
+        }
+    }
+
+    AnimatedVisibility(
+        visible = message != null,
+        modifier = modifier,
+        enter = slideInVertically { -it } + fadeIn(),
+        exit = slideOutVertically { -it } + fadeOut()
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            color = MaterialTheme.colorScheme.inverseSurface,
+            shape = RoundedCornerShape(12.dp),
+            shadowElevation = 6.dp
+        ) {
+            Text(
+                text = message ?: "",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }

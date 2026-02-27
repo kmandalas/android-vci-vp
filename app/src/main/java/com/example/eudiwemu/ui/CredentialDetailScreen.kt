@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -76,60 +77,63 @@ fun CredentialDetailScreen(
     }
     if (credential == null) return
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(credential.credentialDisplayName ?: "Credential") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(credential.credentialDisplayName ?: "Credential") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
+                )
+            }
+        ) { paddingValues ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                credential.claims?.let { claims ->
+                    CredentialCard(
+                        claims = viewModel.flattenClaimsForDisplay(claims),
+                        credentialDisplayName = credential.credentialDisplayName,
+                        credentialFormat = credential.credentialFormat,
+                        resolver = credential.claimResolver,
+                        onDelete = {
+                            viewModel.deleteCredential(credentialKey)
+                        }
+                    )
                 }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-        ) {
-            credential.claims?.let { claims ->
-                CredentialCard(
-                    claims = viewModel.flattenClaimsForDisplay(claims),
-                    credentialDisplayName = credential.credentialDisplayName,
-                    credentialFormat = credential.credentialFormat,
-                    resolver = credential.claimResolver,
-                    onDelete = {
-                        viewModel.deleteCredential(credentialKey)
-                    }
-                )
-            }
 
-            // Show "Present in Person" button only for mDoc credentials
-            if (credential.credentialFormat == AppConfig.FORMAT_MSO_MDOC) {
-                Spacer(modifier = Modifier.height(8.dp))
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        val allGranted = blePermissions.all { perm ->
-                            context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
-                        }
-                        if (allGranted) {
-                            viewModel.startProximityPresentation(activity)
-                        } else {
-                            blePermissionLauncher.launch(blePermissions)
-                        }
-                    },
-                    icon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null) },
-                    text = { Text("Present in Person") },
-                    modifier = Modifier
-                        .padding(horizontal = 32.dp)
-                        .fillMaxWidth()
-                )
-            }
+                // Show "Present in Person" button only for mDoc credentials
+                if (credential.credentialFormat == AppConfig.FORMAT_MSO_MDOC) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            val allGranted = blePermissions.all { perm ->
+                                context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+                            }
+                            if (allGranted) {
+                                viewModel.startProximityPresentation(activity)
+                            } else {
+                                blePermissionLauncher.launch(blePermissions)
+                            }
+                        },
+                        icon = { Icon(Icons.Default.BluetoothSearching, contentDescription = null) },
+                        text = { Text("Present in Person") },
+                        modifier = Modifier
+                            .padding(horizontal = 32.dp)
+                            .fillMaxWidth()
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
+        TopBanner(viewModel = viewModel, modifier = Modifier.align(Alignment.TopCenter))
     }
 }
