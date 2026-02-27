@@ -124,8 +124,8 @@ fun WalletScreen(
                         scaleX = scale
                         scaleY = scale
                     },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                 ) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR Code")
                 }

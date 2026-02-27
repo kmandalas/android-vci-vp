@@ -69,7 +69,7 @@ fun WiaStatusCard(wiaInfo: Map<String, Any>) {
                         imageVector = Icons.Default.Info,
                         contentDescription = "Wallet Instance Attestation",
                         modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.tertiary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(

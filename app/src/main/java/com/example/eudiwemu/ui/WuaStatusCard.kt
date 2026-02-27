@@ -69,7 +69,7 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Wallet Attestation",
                         modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
