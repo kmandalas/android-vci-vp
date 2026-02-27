@@ -6,33 +6,33 @@
     <!-- Wallet body - rounded rectangle -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,34 L72,34 Q78,34 78,40 L78,68 Q78,74 72,74 L30,74 Q24,74 24,68 L24,40 Q24,34 30,34 Z" />
+        android:pathData="M34,36 L74,36 Q80,36 80,42 L80,66 Q80,72 74,72 L34,72 Q28,72 28,66 L28,42 Q28,36 34,36 Z" />
     <!-- Wallet clasp - green accent on right side -->
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M72,46 L82,46 Q84,46 84,48 L84,60 Q84,62 82,62 L72,62 Z" />
+        android:pathData="M74,47 L83,47 Q85,47 85,49 L85,59 Q85,61 83,61 L74,61 Z" />
     <!-- Letter K -->
     <path
         android:fillColor="#1B3A5C"
-        android:pathData="M40,42 L40,66 L45,66 L45,57 L47,55 L55,66 L61,66 L51,52.5 L60,42 L54,42 L45,53 L45,42 Z" />
+        android:pathData="M44,44 L44,64 L49,64 L49,56 L51,54 L58,64 L64,64 L55,53 L63,44 L57,44 L49,52 L49,44 Z" />
     <!-- Circuit lines - green accents on left -->
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M24,44 L20,44 L20,46 L24,46 Z" />
+        android:pathData="M28,46 L23,46 L23,48 L28,48 Z" />
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M24,52 L18,52 L18,54 L24,54 Z" />
+        android:pathData="M28,53 L21,53 L21,55 L28,55 Z" />
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M24,60 L20,60 L20,62 L24,62 Z" />
+        android:pathData="M28,60 L23,60 L23,62 L28,62 Z" />
     <!-- Small circuit dots -->
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M17,44 A1.5,1.5 0 1,1 17,47 A1.5,1.5 0 1,1 17,44 Z" />
+        android:pathData="M21.5,45.5 A1.5,1.5 0 1,1 21.5,48.5 A1.5,1.5 0 1,1 21.5,45.5 Z" />
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M15,52 A1.5,1.5 0 1,1 15,55 A1.5,1.5 0 1,1 15,52 Z" />
+        android:pathData="M19.5,52.5 A1.5,1.5 0 1,1 19.5,55.5 A1.5,1.5 0 1,1 19.5,52.5 Z" />
     <path
         android:fillColor="#2E6B3A"
-        android:pathData="M17,60 A1.5,1.5 0 1,1 17,63 A1.5,1.5 0 1,1 17,60 Z" />
+        android:pathData="M21.5,59.5 A1.5,1.5 0 1,1 21.5,62.5 A1.5,1.5 0 1,1 21.5,59.5 Z" />
 </vector>
