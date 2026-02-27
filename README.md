@@ -1,4 +1,8 @@
-# Android SD-JWT, mDoc & VCI/VP Demo
+<p align="center">
+  <img src="app/src/main/res/drawable/logo.png" alt="K-Wallet Logo" width="180" />
+</p>
+
+# K-Wallet — SD-JWT, mDoc & VCI/VP Demo
 Explore how SD-JWTs, mDoc (ISO 18013-5), OIDC4VCI, and OIDC4VP enable user-consented, selective disclosure of Verifiable Credentials using open standards in a demo setup. The wallet implements wallet attestation (WIA/WUA), DPoP-bound tokens, and HAIP-compliant verifiable presentations, following the [HAIP (High Assurance Interoperability Profile)](https://openid.net/specs/openid4vc-high-assurance-interoperability-profile-1_0.html) specification and EUDI Architecture Reference Framework.
 
 Related articles:
