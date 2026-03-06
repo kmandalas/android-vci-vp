@@ -52,6 +52,7 @@ import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
 import com.example.eudiwemu.QrScannerActivity
+import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.ui.viewmodel.WalletEvent
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -180,7 +181,31 @@ fun WalletScreen(
                                 }
                             )
                         }
+                        // Conformance test entry (always available)
+                        DropdownMenuItem(
+                            text = { Text(AppConfig.CONFORMANCE_TEST_LABEL) },
+                            onClick = {
+                                viewModel.updateSelectedCredentialType(
+                                    AppConfig.CONFORMANCE_TEST_LABEL,
+                                    AppConfig.CONFORMANCE_TEST_VALUE
+                                )
+                                expanded = false
+                            }
+                        )
                     }
+                }
+
+                // Show issuer URL field when conformance test is selected
+                if (issuanceState.isConformanceTest) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = issuanceState.conformanceIssuerUrl,
+                        onValueChange = { viewModel.updateConformanceIssuerUrl(it) },
+                        label = { Text("Credential Issuer URL") },
+                        placeholder = { Text("https://www.certification.openid.net/test/a/...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(0.8f)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -189,8 +214,15 @@ fun WalletScreen(
                     CircularProgressIndicator()
                 } else {
                     Button(
-                        onClick = { viewModel.requestCredential(activity) },
-                        enabled = issuanceState.selectedValue.isNotEmpty()
+                        onClick = {
+                            if (issuanceState.isConformanceTest) {
+                                viewModel.requestConformanceCredential(activity)
+                            } else {
+                                viewModel.requestCredential(activity)
+                            }
+                        },
+                        enabled = issuanceState.selectedValue.isNotEmpty() &&
+                                (!issuanceState.isConformanceTest || issuanceState.conformanceIssuerUrl.isNotBlank())
                     ) {
                         Text("Request VC")
                     }

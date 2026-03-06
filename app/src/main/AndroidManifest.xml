@@ -56,6 +56,16 @@
                 <data android:scheme="haip-vp" />
             </intent-filter>
 
+            <!-- Deep link handler for Credential Offer (OID4VCI) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="openid-credential-offer" />
+            </intent-filter>
+
             <!-- Deep link handler for OAuth2 redirect -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

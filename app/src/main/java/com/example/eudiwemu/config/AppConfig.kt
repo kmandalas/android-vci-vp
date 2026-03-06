@@ -6,7 +6,6 @@ class AppConfig {
 
     companion object {
         const val CLIENT_ID = "wallet-client"
-        const val CLIENT_SECRET = "wallet-secret"
         const val SCOPE = "eu.europa.ec.eudi.pda1.1"
         const val REDIRECT_URI = "myapp://callback"
         const val KEY_ALIAS = "wallet-key"
@@ -35,6 +34,11 @@ class AppConfig {
 
         // PAR endpoint (derived from token URL)
         val AUTH_SERVER_PAR_URL: String = AUTH_SERVER_TOKEN_URL.replace("/oauth2/token", "/oauth2/par")
+
+        // Conformance suite
+        const val CONFORMANCE_TEST_VALUE = "__conformance_test__"
+        const val CONFORMANCE_TEST_LABEL = "Test PID (Conformance)"
+        const val CONFORMANCE_ISSUER_URL = "https://www.certification.openid.net/test/a/kmandalas-wallet-1/"
 
         // Storage keys for encrypted SharedPreferences
         const val STORED_WIA = "stored_wia"

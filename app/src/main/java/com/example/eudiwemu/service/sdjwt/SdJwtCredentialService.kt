@@ -64,11 +64,20 @@ class SdJwtCredentialService(private val client: HttpClient) {
         Log.d(TAG, "Decoding SD-JWT...")
 
         val parts = sdJwt.split("~")
+        val jwtPart = parts.first()
         val disclosures = parts.drop(1).filter { it.isNotEmpty() }
 
         Log.d(TAG, "Number of disclosures: ${disclosures.size}")
 
         val decodedClaims = mutableMapOf<String, Any>()
+
+        // Extract non-disclosed claims from JWT payload (e.g., vct, iss, iat)
+        try {
+            val payload = SignedJWT.parse(jwtPart).jwtClaimsSet
+            payload.getStringClaim("vct")?.let { decodedClaims["vct"] = it }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing JWT payload", e)
+        }
 
         for (disclosure in disclosures) {
             try {

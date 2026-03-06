@@ -7,11 +7,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.authlete.sd.Disclosure
 import com.example.eudiwemu.config.AppConfig
+import com.example.eudiwemu.dto.CredentialOffer
+import com.example.eudiwemu.model.IssuerSession
 import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.IssuanceService
@@ -26,6 +29,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import org.json.JSONObject
 
 class WalletViewModel(
@@ -53,6 +57,8 @@ class WalletViewModel(
     var proximityState by mutableStateOf(ProximityState())
         private set
 
+    private val json = Json { ignoreUnknownKeys = true }
+
     var bannerMessage by mutableStateOf<String?>(null)
         private set
 
@@ -70,6 +76,10 @@ class WalletViewModel(
 
     fun updateSelectedCredentialType(label: String, value: String) {
         issuanceState = issuanceState.copy(selectedLabel = label, selectedValue = value)
+    }
+
+    fun updateConformanceIssuerUrl(url: String) {
+        issuanceState = issuanceState.copy(conformanceIssuerUrl = url)
     }
 
     fun dismissSdJwtDialog() {
@@ -153,6 +163,7 @@ class WalletViewModel(
                 CredentialUiState(
                     credentialKey = credentialKey,
                     credentialFormat = bundle.format,
+                    vct = claims?.get("vct") as? String,
                     claims = claims,
                     claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
                     credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name,
@@ -173,6 +184,7 @@ class WalletViewModel(
             when (uri.scheme) {
                 "myapp" -> handleOAuthDeepLink(uri, activity)
                 "openid4vp", "haip-vp" -> handleVpTokenDeepLink(uri)
+                "openid-credential-offer" -> handleCredentialOfferDeepLink(uri, activity)
                 else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
             }
         }
@@ -183,15 +195,36 @@ class WalletViewModel(
         Log.d("OAuth", "Authorization code: $code")
 
         val context = activity.applicationContext
+        val prefs = getEncryptedPrefs(context, activity)
         val codeVerifier = PkceManager.getCodeVerifier(context)
+
+        // Recover pending issuer session (if credential offer flow)
+        val session = prefs.getString("pending_issuer_session", null)?.let {
+            try { json.decodeFromString<IssuerSession>(it) } catch (e: Exception) { null }
+        }
+
         val tokenResult = withContext(Dispatchers.IO) {
-            issuanceService.exchangeAuthorizationCodeForToken(code, codeVerifier)
+            if (session != null) {
+                issuanceService.exchangeAuthorizationCodeForToken(
+                    code, codeVerifier,
+                    tokenUrl = session.tokenEndpoint,
+                    authServerIssuer = session.authServerIssuer,
+                    sendWia = session.sendWia
+                )
+            } else {
+                issuanceService.exchangeAuthorizationCodeForToken(code, codeVerifier)
+            }
         }
 
         if (tokenResult.isSuccess) {
-            val accessToken = tokenResult.getOrNull()
-            val prefs = getEncryptedPrefs(context, activity)
+            val tokenResponse = tokenResult.getOrNull()!!
+            val accessToken = tokenResponse.access_token
             prefs.edit { putString("access_token", accessToken) }
+
+            // Store c_nonce from token response if present (OID4VCI 1.0 Final)
+            tokenResponse.c_nonce?.let { nonce ->
+                prefs.edit { putString("pending_c_nonce", nonce) }
+            }
 
             // Recover the format saved before the OAuth redirect (ViewModel is recreated)
             val pendingFormat = prefs.getString("pending_credential_format", null) ?: selectedFormatValue
@@ -201,12 +234,19 @@ class WalletViewModel(
             issuanceState = issuanceState.copy(isLoading = true)
 
             try {
-                val configId = if (pendingFormat == AppConfig.FORMAT_MSO_MDOC)
-                    AppConfig.MDOC_CREDENTIAL_CONFIG_ID else AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
-                val credentialConfig = issuanceState.credentialConfigs[configId]
-                val vcResult = submitCredentialRequest(activity, credentialConfig, pendingFormat)
+                val vcResult = if (session != null) {
+                    submitCredentialRequestWithSession(activity, session, accessToken)
+                } else {
+                    val configId = if (pendingFormat == AppConfig.FORMAT_MSO_MDOC)
+                        AppConfig.MDOC_CREDENTIAL_CONFIG_ID else AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
+                    val credentialConfig = issuanceState.credentialConfigs[configId]
+                    submitCredentialRequest(activity, credentialConfig, pendingFormat)
+                }
 
                 issuanceState = issuanceState.copy(isLoading = false)
+                // Clean up session
+                prefs.edit { remove("pending_issuer_session") }
+
                 if (vcResult.isSuccess) {
                     val (message, credentialKey) = vcResult.getOrNull()!!
                     addOrReplaceCredentialInList(credentialKey)
@@ -218,10 +258,12 @@ class WalletViewModel(
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error requesting VC after OAuth", e)
                 issuanceState = issuanceState.copy(isLoading = false)
+                prefs.edit { remove("pending_issuer_session") }
                 _events.send(WalletEvent.ShowSnackbar("❌ Error requesting VC: ${e.message}"))
             }
         } else {
             Log.e("OAuth", "Failed to exchange code: ${tokenResult.exceptionOrNull()?.message}")
+            _events.send(WalletEvent.ShowSnackbar("❌ Error: ${tokenResult.exceptionOrNull()?.message}"))
         }
     }
 
@@ -253,10 +295,14 @@ class WalletViewModel(
             )
 
             val dcqlFormat = vpTokenService.extractFormatFromDcql(requestObject)
-            Log.d("WalletApp", "VP DCQL requested format: $dcqlFormat")
+            val requestedVcts = requestObject.dcql_query.credentials.firstOrNull()?.meta?.vct_values
+            Log.d("WalletApp", "VP DCQL requested format: $dcqlFormat, vct_values: $requestedVcts")
 
-            // Find matching credential by format
-            val matchedCredential = credentialList.find { it.credentialFormat == dcqlFormat }
+            // Find matching credential by format and VCT
+            val matchedCredential = credentialList.find { cred ->
+                cred.credentialFormat == dcqlFormat &&
+                (requestedVcts == null || cred.vct in requestedVcts)
+            }
             if (matchedCredential == null) {
                 Log.w("WalletApp", "No stored credential matches DCQL format: $dcqlFormat")
                 _events.send(WalletEvent.ShowSnackbar("⚠️ No matching credential for requested format"))
@@ -302,7 +348,8 @@ class WalletViewModel(
                     prefs.edit { putString("pending_credential_format", selectedFormatValue) }
                     startAuthorizationFlowWithPar(activity) { error ->
                         Log.e("WalletApp", "PAR failed: $error")
-                        startAuthorizationFlowLegacy(activity)
+                        issuanceState = issuanceState.copy(isLoading = false)
+                        viewModelScope.launch { _events.send(WalletEvent.ShowSnackbar("❌ Authorization failed: $error")) }
                     }
                     issuanceState = issuanceState.copy(isLoading = false)
                 } else {
@@ -326,7 +373,7 @@ class WalletViewModel(
                             _events.send(WalletEvent.ShowSnackbar("🔑 Session expired, please authenticate again"))
                             startAuthorizationFlowWithPar(activity) { error ->
                                 Log.e("WalletApp", "PAR failed during re-auth: $error")
-                                startAuthorizationFlowLegacy(activity)
+                                viewModelScope.launch { _events.send(WalletEvent.ShowSnackbar("❌ Re-authentication failed: $error")) }
                             }
                         } else {
                             _events.send(WalletEvent.ShowSnackbar("❌ Error: $errorMsg"))
@@ -347,11 +394,111 @@ class WalletViewModel(
                     _events.send(WalletEvent.ShowSnackbar("🔑 Session expired, please authenticate again"))
                     startAuthorizationFlowWithPar(activity) { error ->
                         Log.e("WalletApp", "PAR failed during error recovery: $error")
-                        startAuthorizationFlowLegacy(activity)
+                        viewModelScope.launch { _events.send(WalletEvent.ShowSnackbar("❌ Authorization failed: $error")) }
                     }
                 } else {
                     _events.send(WalletEvent.ShowSnackbar("❌ Error requesting VC: ${e.message}"))
                 }
+            }
+        }
+    }
+
+    /**
+     * Request a credential from an external issuer (conformance suite).
+     * Builds a synthetic credential offer from the pasted issuer URL,
+     * discovers endpoints, and starts the authorization code flow.
+     */
+    fun requestConformanceCredential(activity: FragmentActivity) {
+        val issuerUrl = issuanceState.conformanceIssuerUrl.trim()
+        if (issuerUrl.isBlank()) return
+
+        issuanceState = issuanceState.copy(isLoading = true)
+        viewModelScope.launch {
+            try {
+                // Discover issuer metadata to find credential configuration IDs
+                val issuerMeta = withContext(Dispatchers.IO) {
+                    issuanceService.fetchIssuerMetadata(issuerUrl)
+                }
+                val configIds = issuerMeta.credential_configurations_supported.keys.toList()
+                if (configIds.isEmpty()) {
+                    throw IllegalStateException("No credential configurations found at $issuerUrl")
+                }
+                Log.d("WalletApp", "Conformance issuer configs: $configIds")
+
+                // Build a synthetic credential offer
+                val offer = CredentialOffer(
+                    credential_issuer = issuerUrl,
+                    credential_configuration_ids = configIds,
+                    grants = null
+                )
+
+                // Resolve and start the flow (pass pre-fetched metadata to avoid redundant fetch)
+                val session = withContext(Dispatchers.IO) {
+                    issuanceService.resolveCredentialOffer(offer, prefetchedIssuerMeta = issuerMeta)
+                }
+
+                val context = activity.applicationContext
+                val prefs = getEncryptedPrefs(context, activity)
+                prefs.edit {
+                    remove("access_token")
+                    putString("pending_issuer_session", json.encodeToString(IssuerSession.serializer(), session))
+                    putString("pending_credential_format", AppConfig.FORMAT_SD_JWT)
+                }
+
+                val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
+
+                // Build authorization_details if AS supports RAR (RFC 9396)
+                val authDetails = if (session.useAuthorizationDetails) {
+                    issuanceService.buildAuthorizationDetails(
+                        session.credentialConfigurationIds, session.credentialIssuerUrl
+                    )
+                } else null
+                Log.d("WalletApp", "Conformance PAR: scope=${session.scope}, useRAR=${session.useAuthorizationDetails}")
+
+                val parEndpoint = session.parEndpoint
+                if (parEndpoint != null) {
+                    val parResult = withContext(Dispatchers.IO) {
+                        issuanceService.pushAuthorizationRequest(
+                            codeChallenge = codeChallenge,
+                            parUrl = parEndpoint,
+                            scope = session.scope ?: configIds.first(),
+                            authServerIssuer = session.authServerIssuer,
+                            issuerState = session.issuerState,
+                            sendWia = session.sendWia,
+                            authorizationDetails = authDetails
+                        )
+                    }
+
+                    if (parResult.isFailure) {
+                        throw parResult.exceptionOrNull() ?: Exception("PAR failed")
+                    }
+
+                    val requestUri = parResult.getOrThrow()
+                    val authorizationUri = session.authorizationEndpoint.toUri().buildUpon()
+                        .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+                        .appendQueryParameter("request_uri", requestUri)
+                        .build()
+
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, authorizationUri))
+                } else {
+                    val authUriBuilder = session.authorizationEndpoint.toUri().buildUpon()
+                        .appendQueryParameter("response_type", "code")
+                        .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+                        .appendQueryParameter("redirect_uri", AppConfig.REDIRECT_URI)
+                        .appendQueryParameter("code_challenge", codeChallenge)
+                        .appendQueryParameter("code_challenge_method", "S256")
+
+                    authUriBuilder.appendQueryParameter("scope", session.scope ?: configIds.first())
+                    authDetails?.let { authUriBuilder.appendQueryParameter("authorization_details", it) }
+
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, authUriBuilder.build()))
+                }
+
+                issuanceState = issuanceState.copy(isLoading = false)
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error in conformance credential request", e)
+                issuanceState = issuanceState.copy(isLoading = false)
+                _events.send(WalletEvent.ShowSnackbar("❌ Error: ${e.message}"))
             }
         }
     }
@@ -472,7 +619,7 @@ class WalletViewModel(
                     }
                     is ProximityPresentationService.ProximityEvent.ResponseSent -> {
                         proximityState = proximityState.copy(status = "Presentation complete")
-                        _events.send(WalletEvent.ShowSnackbar("Proximity presentation complete"))
+                        _events.send(WalletEvent.ShowSnackbar("✅ Proximity presentation complete"))
                     }
                     is ProximityPresentationService.ProximityEvent.Disconnected -> {
                         proximityState = proximityState.copy(status = "Disconnected")
@@ -482,7 +629,7 @@ class WalletViewModel(
                         proximityState = proximityState.copy(
                             status = "Error: ${event.error.message}"
                         )
-                        _events.send(WalletEvent.ShowSnackbar("Proximity error: ${event.error.message}"))
+                        _events.send(WalletEvent.ShowSnackbar("❌ Proximity error: ${event.error.message}"))
                     }
                 }
             }
@@ -530,7 +677,145 @@ class WalletViewModel(
         return issuanceService.flattenClaimsForDisplay(claims)
     }
 
+    // --- Credential Offer Flow ---
+
+    private suspend fun handleCredentialOfferDeepLink(uri: Uri, activity: FragmentActivity) {
+        try {
+            issuanceState = issuanceState.copy(isLoading = true)
+            _events.send(WalletEvent.ShowSnackbar("📋 Processing credential offer..."))
+
+            // Parse the credential_offer query parameter (by_value)
+            val offerJson = uri.getQueryParameter("credential_offer")
+                ?: throw IllegalArgumentException("Missing credential_offer parameter")
+            val offer = json.decodeFromString<CredentialOffer>(offerJson)
+            Log.d("WalletApp", "Credential offer from: ${offer.credential_issuer}, configs: ${offer.credential_configuration_ids}")
+
+            // Resolve issuer + AS metadata into a session
+            val session = withContext(Dispatchers.IO) {
+                issuanceService.resolveCredentialOffer(offer)
+            }
+            Log.d("WalletApp", "Resolved session: token=${session.tokenEndpoint}, cred=${session.credentialEndpoint}, sendWia=${session.sendWia}")
+
+            // Persist session for recovery after OAuth redirect
+            val context = activity.applicationContext
+            val prefs = getEncryptedPrefs(context, activity)
+            val sessionJson = json.encodeToString(IssuerSession.serializer(), session)
+            prefs.edit {
+                putString("pending_issuer_session", sessionJson)
+                putString("pending_credential_format", AppConfig.FORMAT_SD_JWT)
+            }
+
+            // Start authorization flow with PAR (or direct authorize)
+            val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
+
+            // Build authorization_details if AS supports it (RAR / RFC 9396)
+            val authDetails = if (session.useAuthorizationDetails) {
+                issuanceService.buildAuthorizationDetails(
+                    session.credentialConfigurationIds, session.credentialIssuerUrl
+                )
+            } else null
+
+            val parEndpoint = session.parEndpoint
+            if (parEndpoint != null) {
+                val parResult = withContext(Dispatchers.IO) {
+                    issuanceService.pushAuthorizationRequest(
+                        codeChallenge = codeChallenge,
+                        parUrl = parEndpoint,
+                        scope = session.scope ?: AppConfig.SCOPE,
+                        authServerIssuer = session.authServerIssuer,
+                        issuerState = session.issuerState,
+                        sendWia = session.sendWia,
+                        authorizationDetails = authDetails
+                    )
+                }
+
+                if (parResult.isFailure) {
+                    throw parResult.exceptionOrNull() ?: Exception("PAR failed")
+                }
+
+                val requestUri = parResult.getOrThrow()
+                val authorizationUri = session.authorizationEndpoint.toUri().buildUpon()
+                    .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+                    .appendQueryParameter("request_uri", requestUri)
+                    .build()
+
+                Log.d("WalletApp", "Redirecting to suite authorization: $authorizationUri")
+                activity.startActivity(Intent(Intent.ACTION_VIEW, authorizationUri))
+            } else {
+                // No PAR — direct authorization request
+                val authUriBuilder = session.authorizationEndpoint.toUri().buildUpon()
+                    .appendQueryParameter("response_type", "code")
+                    .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
+                    .appendQueryParameter("redirect_uri", AppConfig.REDIRECT_URI)
+                    .appendQueryParameter("code_challenge", codeChallenge)
+                    .appendQueryParameter("code_challenge_method", "S256")
+
+                authUriBuilder.appendQueryParameter("scope", session.scope ?: AppConfig.SCOPE)
+                authDetails?.let { authUriBuilder.appendQueryParameter("authorization_details", it) }
+                session.issuerState?.let { authUriBuilder.appendQueryParameter("issuer_state", it) }
+
+                Log.d("WalletApp", "Redirecting to authorization (no PAR): ${authUriBuilder.build()}")
+                activity.startActivity(Intent(Intent.ACTION_VIEW, authUriBuilder.build()))
+            }
+
+            issuanceState = issuanceState.copy(isLoading = false)
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Error handling credential offer", e)
+            issuanceState = issuanceState.copy(isLoading = false)
+            _events.send(WalletEvent.ShowSnackbar("❌ Error: ${e.message}"))
+        }
+    }
+
     // --- Private helpers ---
+
+    /**
+     * Submit credential request using a dynamically discovered IssuerSession.
+     * Used for credential offer flow (conformance suite, external issuers).
+     */
+    private suspend fun submitCredentialRequestWithSession(
+        activity: FragmentActivity,
+        session: IssuerSession,
+        accessToken: String
+    ): Result<Pair<String, String>> {
+        return try {
+            // Use WUA only for our own backend; conformance suite doesn't support key_attestation
+            val storedWua: String? = null  // Dynamic sessions skip WUA for now
+
+            val context = activity.applicationContext
+            val prefs = getEncryptedPrefs(context, activity)
+
+            // Use c_nonce from token response if available, otherwise fetch from nonce endpoint
+            val nonce = prefs.getString("pending_c_nonce", null)?.also {
+                prefs.edit { remove("pending_c_nonce") }
+                Log.d("WalletApp", "Using c_nonce from token response")
+            } ?: withContext(Dispatchers.IO) {
+                Log.d("WalletApp", "Fetching nonce from: ${session.nonceEndpoint}")
+                issuanceService.getNonce(session.nonceEndpoint)
+            }
+
+            val credentialConfigId = session.credentialConfigurationIds.firstOrNull()
+                ?: AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
+            val jwtProof = issuanceService.createJwtProof(
+                nonce, wuaJwt = storedWua, audience = session.credentialIssuerUrl
+            )
+
+            withContext(Dispatchers.IO) {
+                issuanceService.requestCredential(
+                    accessToken = accessToken,
+                    jwtProof = jwtProof,
+                    credentialUrl = session.credentialEndpoint,
+                    credentialConfigId = credentialConfigId,
+                    displayName = session.credentialDisplayName
+                )
+            }
+
+            val credentialKey = AppConfig.extractCredentialKey(credentialConfigId)
+            Result.success("✅ Credential issued successfully" to credentialKey)
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Error in session-based credential request", e)
+            Result.failure(e)
+        }
+    }
 
     private fun addOrReplaceCredentialInList(credentialKey: String) {
         try {
@@ -539,6 +824,7 @@ class WalletViewModel(
             val newState = CredentialUiState(
                 credentialKey = credentialKey,
                 credentialFormat = bundle.format,
+                vct = claims?.get("vct") as? String,
                 claims = claims,
                 claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
                 credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name
@@ -583,25 +869,6 @@ class WalletViewModel(
         activity.startActivity(intent)
     }
 
-    private fun startAuthorizationFlowLegacy(activity: FragmentActivity) {
-        val context = activity.applicationContext
-        val codeChallenge = PkceManager.generateAndStoreCodeChallenge(context)
-
-        val authorizationUri = Uri.Builder()
-            .scheme("http")
-            .encodedAuthority(AppConfig.AUTH_SERVER_HOST)
-            .path("/oauth2/authorize")
-            .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("client_id", AppConfig.CLIENT_ID)
-            .appendQueryParameter("scope", AppConfig.SCOPE)
-            .appendQueryParameter("redirect_uri", AppConfig.REDIRECT_URI)
-            .appendQueryParameter("code_challenge", codeChallenge)
-            .appendQueryParameter("code_challenge_method", "S256")
-            .build()
-
-        val intent = Intent(Intent.ACTION_VIEW, authorizationUri)
-        activity.startActivity(intent)
-    }
 
     /**
      * Returns the credential key (not the raw credential) on success.
@@ -622,10 +889,14 @@ class WalletViewModel(
 
             val storedWua = wuaService.getStoredWua()
             if (storedWua.isNullOrEmpty()) {
-                return Result.failure(Exception("❌ WUA not found - wallet not activated!"))
+                return Result.failure(Exception("WUA not found - wallet not activated!"))
             }
 
-            val nonce = issuanceService.getNonce(accessToken)
+            // Use c_nonce from token response if available, otherwise fetch from nonce endpoint
+            val nonce = prefs.getString("pending_c_nonce", null)?.also {
+                prefs.edit { remove("pending_c_nonce") }
+                Log.d("WalletApp", "Using c_nonce from token response")
+            } ?: issuanceService.getNonce()
             val jwtProof = issuanceService.createJwtProof(nonce, storedWua)
             issuanceService.requestCredential(
                 accessToken, jwtProof, credentialConfig, format

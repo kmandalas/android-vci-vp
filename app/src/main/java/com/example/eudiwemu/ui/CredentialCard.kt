@@ -45,14 +45,26 @@ private val fallbackClaimLabels = mapOf(
     "family_name" to "Family Name",
     "given_name" to "Given Name",
     "birth_date" to "Birth Date",
+    "birthdate" to "Date of Birth",
+    "age_in_years" to "Age",
+    "age_over_18" to "Age Over 18",
+    "nationality" to "Nationality",
+    "issuance_date" to "Issuance Date",
+    "expiry_date" to "Expiry Date",
+    "issuing_authority" to "Issuing Authority",
+    "issuing_country" to "Issuing Country",
     "country_code" to "Country",
     "institution_id" to "Institution ID",
     "institution_name" to "Institution Name",
     "company" to "Company"
 )
 
+/** Convert snake_case key to Title Case as a last resort. */
+private fun prettifyClaimKey(key: String): String =
+    key.split("_").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+
 private val fallbackClaimGroups = mapOf(
-    "Credential Holder" to listOf("family_name", "given_name", "birth_date"),
+    "Personal Info" to listOf("family_name", "given_name", "birth_date", "birthdate", "age_in_years", "age_over_18", "nationality"),
     "Competent Institution" to listOf("country_code", "institution_id", "institution_name")
 )
 
@@ -64,6 +76,7 @@ private val groupIcons = mapOf(
     "credential_holder" to Icons.Default.Person,
     "competent_institution" to Icons.Default.Place,
     // Fallback display-name keys
+    "Personal Info" to Icons.Default.Person,
     "Credential Holder" to Icons.Default.Person,
     "Competent Institution" to Icons.Default.Place
 )
@@ -110,7 +123,7 @@ fun CredentialCard(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = credentialDisplayName ?: "PDA1 Credential",
+                            text = credentialDisplayName ?: "Credential",
                             style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -213,7 +226,7 @@ fun CredentialCard(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                             remainingClaims.forEach { (key, value) ->
                                 ClaimRow(
-                                    label = fallbackClaimLabels[key] ?: key,
+                                    label = fallbackClaimLabels[key] ?: prettifyClaimKey(key),
                                     value = value
                                 )
                             }
@@ -288,7 +301,7 @@ private fun ClaimGroupSection(
                     val label = if (resolver != null) {
                         resolver.getDisplayNameByClaimName(key)
                     } else {
-                        fallbackClaimLabels[key] ?: key
+                        fallbackClaimLabels[key] ?: prettifyClaimKey(key)
                     }
                     ClaimRow(
                         label = label,

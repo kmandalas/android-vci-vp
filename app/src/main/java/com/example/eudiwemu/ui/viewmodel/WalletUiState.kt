@@ -2,6 +2,7 @@ package com.example.eudiwemu.ui.viewmodel
 
 import com.authlete.sd.Disclosure
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
+import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.CredentialConfiguration
 import com.example.eudiwemu.service.mdoc.DeviceRequestParser
 import com.example.eudiwemu.util.ClaimMetadataResolver
@@ -9,6 +10,7 @@ import com.example.eudiwemu.util.ClaimMetadataResolver
 data class CredentialUiState(
     val credentialKey: String = "",
     val credentialFormat: String = "",
+    val vct: String? = null,
     val claims: Map<String, Any>? = null,
     val claimResolver: ClaimMetadataResolver? = null,
     val credentialDisplayName: String? = null,
@@ -26,8 +28,11 @@ data class IssuanceUiState(
     val credentialConfigs: Map<String, CredentialConfiguration> = emptyMap(),
     val selectedLabel: String = "",
     val selectedValue: String = "",
-    val isLoading: Boolean = false
-)
+    val isLoading: Boolean = false,
+    val conformanceIssuerUrl: String = AppConfig.CONFORMANCE_ISSUER_URL
+) {
+    val isConformanceTest: Boolean get() = selectedValue == AppConfig.CONFORMANCE_TEST_VALUE
+}
 
 data class VpRequestState(
     val clientId: String = "",

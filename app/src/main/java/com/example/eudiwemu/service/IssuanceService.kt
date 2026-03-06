@@ -9,9 +9,12 @@ import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.AccessTokenResponse
 import com.example.eudiwemu.dto.CredentialConfiguration
 import com.example.eudiwemu.dto.CredentialIssuerMetadata
+import com.example.eudiwemu.dto.CredentialOffer
 import com.example.eudiwemu.dto.NonceResponse
+import com.example.eudiwemu.dto.OAuthServerMetadata
 import com.example.eudiwemu.dto.PushedAuthorizationResponse
 import com.example.eudiwemu.dto.StoredCredential
+import com.example.eudiwemu.model.IssuerSession
 import com.example.eudiwemu.security.AndroidKeystoreSigner
 import com.example.eudiwemu.security.DPoPManager
 import com.example.eudiwemu.security.WalletKeyManager
@@ -25,7 +28,6 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.request.basicAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -44,9 +46,8 @@ class IssuanceService(
     private val client: HttpClient,
     private val wiaService: WiaService? = null,
     private val context: Context,
-
-    walletKeyManager: WalletKeyManager
-    ) {
+    private val walletKeyManager: WalletKeyManager
+) {
     companion object {
         private const val TAG = "IssuanceService"
     }
@@ -57,6 +58,10 @@ class IssuanceService(
 
     // Encrypted SharedPreferences - lazily initialized when activity context is available
     private var _encryptedPrefs: SharedPreferences? = null
+    private val encryptedPrefs: SharedPreferences
+        get() = _encryptedPrefs ?: throw IllegalStateException(
+            "IssuanceService not initialized with Activity. Call initWithActivity() first."
+        )
 
     /**
      * Initialize encrypted preferences with a FragmentActivity context.
@@ -66,19 +71,116 @@ class IssuanceService(
         _encryptedPrefs = getEncryptedPrefs(context, activity)
     }
 
-    private val encryptedPrefs: SharedPreferences
-        get() = _encryptedPrefs ?: throw IllegalStateException(
-            "IssuanceService not initialized with Activity. Call initWithActivity() first."
-        )
-
     /**
      * Fetches issuer metadata from /.well-known/openid-credential-issuer.
      * Returns the parsed metadata including credential configurations with claim display info.
      */
-    suspend fun fetchIssuerMetadata(): CredentialIssuerMetadata {
-        val url = "${AppConfig.ISSUER_URL}/.well-known/openid-credential-issuer"
+    suspend fun fetchIssuerMetadata(
+        issuerUrl: String = AppConfig.ISSUER_URL
+    ): CredentialIssuerMetadata {
+        val url = buildWellKnownUrl(issuerUrl, "openid-credential-issuer")
+        Log.d(TAG, "Fetching issuer metadata from: $url")
         val response: HttpResponse = client.get(url)
-        return response.body()
+        val bodyText = response.bodyAsText()
+        Log.d(TAG, "Issuer metadata response (${response.status}): $bodyText")
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        return json.decodeFromString(bodyText)
+    }
+
+    /**
+     * Fetch OAuth Authorization Server metadata.
+     * Tries RFC 8414 (.well-known/oauth-authorization-server) first,
+     * falls back to OpenID Connect Discovery (.well-known/openid-configuration).
+     */
+    suspend fun fetchOAuthServerMetadata(authServerUrl: String): OAuthServerMetadata {
+        val rfc8414Url = buildWellKnownUrl(authServerUrl, "oauth-authorization-server")
+        Log.d(TAG, "Fetching AS metadata from (RFC 8414): $rfc8414Url")
+        val rfc8414Response: HttpResponse = client.get(rfc8414Url)
+        if (rfc8414Response.status.value in 200..299) {
+            return rfc8414Response.body()
+        }
+        Log.d(TAG, "RFC 8414 returned ${rfc8414Response.status}, falling back to openid-configuration")
+        val oidcUrl = buildWellKnownUrl(authServerUrl, "openid-configuration")
+        Log.d(TAG, "Fetching AS metadata from (OIDC): $oidcUrl")
+        val oidcResponse: HttpResponse = client.get(oidcUrl)
+        return oidcResponse.body()
+    }
+
+    /**
+     * Build a .well-known URL following RFC 8414 rules.
+     * For "https://example.com/path/", produces "https://example.com/.well-known/suffix/path/".
+     * For "https://example.com" (no path), produces "https://example.com/.well-known/suffix".
+     */
+    private fun buildWellKnownUrl(baseUrl: String, wellKnownSuffix: String): String {
+        val uri = java.net.URI.create(baseUrl.trim())
+        val path = uri.path  // e.g., "/test/a/kmandalas-wallet-1/" or ""
+        return if (path.isNullOrEmpty() || path == "/") {
+            "${uri.scheme}://${uri.authority}/.well-known/$wellKnownSuffix"
+        } else {
+            "${uri.scheme}://${uri.authority}/.well-known/$wellKnownSuffix$path"
+        }
+    }
+
+    /**
+     * Resolve a credential offer into a full IssuerSession by discovering
+     * issuer metadata and AS metadata.
+     * Accepts optional pre-fetched issuer metadata to avoid redundant network calls.
+     */
+    suspend fun resolveCredentialOffer(
+        offer: CredentialOffer,
+        prefetchedIssuerMeta: CredentialIssuerMetadata? = null
+    ): IssuerSession {
+        Log.d(TAG, "Resolving credential offer from: ${offer.credential_issuer}")
+
+        // 1. Use pre-fetched metadata or fetch it
+        val issuerMeta = prefetchedIssuerMeta ?: fetchIssuerMetadata(offer.credential_issuer)
+
+        // 2. Determine AS URL (from metadata or grant, fallback to issuer URL)
+        val authServerUrl = offer.grants?.authorization_code?.authorization_server
+            ?: issuerMeta.authorization_servers?.firstOrNull()
+            ?: offer.credential_issuer
+
+        // 3. Fetch AS metadata
+        val asMeta = fetchOAuthServerMetadata(authServerUrl)
+
+        // 4. Determine scope from credential configurations
+        // Prefer explicit scope field, then vct, then configId
+        val scope = offer.credential_configuration_ids.firstOrNull()?.let { configId ->
+            issuerMeta.credential_configurations_supported[configId]?.let { config ->
+                config.scope ?: config.vct ?: configId
+            }
+        }
+
+        // 5. Check if WIA is needed
+        val sendWia = asMeta.token_endpoint_auth_methods_supported
+            ?.contains("attest_jwt_client_auth") ?: false
+
+        // 6. Check if AS supports authorization_details (RAR)
+        val useAuthorizationDetails = asMeta.authorization_details_types_supported
+            ?.contains("openid_credential") ?: false
+
+        // 7. Extract credential display name from metadata
+        val displayName = offer.credential_configuration_ids.firstOrNull()?.let { configId ->
+            issuerMeta.credential_configurations_supported[configId]?.resolvedDisplay()?.firstOrNull()?.name
+        }
+
+        return IssuerSession(
+            credentialIssuerUrl = offer.credential_issuer,
+            credentialEndpoint = issuerMeta.credential_endpoint
+                ?: "${offer.credential_issuer}/credential",
+            nonceEndpoint = issuerMeta.nonce_endpoint
+                ?: "${offer.credential_issuer}/credential/nonce",
+            tokenEndpoint = asMeta.token_endpoint,
+            authorizationEndpoint = asMeta.authorization_endpoint,
+            parEndpoint = asMeta.pushed_authorization_request_endpoint,
+            credentialConfigurationIds = offer.credential_configuration_ids,
+            scope = scope,
+            issuerState = offer.grants?.authorization_code?.issuer_state,
+            authServerIssuer = asMeta.issuer,
+            sendWia = sendWia,
+            credentialDisplayName = displayName,
+            useAuthorizationDetails = useAuthorizationDetails
+        )
     }
 
     /**
@@ -107,57 +209,85 @@ class IssuanceService(
         }
     }
 
-    @Deprecated("replaced client_credentials with authorization_code flow")
-    suspend fun obtainAccessToken(): AccessTokenResponse {
-        val response: AccessTokenResponse = client.post(AppConfig.AUTH_SERVER_TOKEN_URL) {
-            contentType(ContentType.Application.FormUrlEncoded)
-            basicAuth(AppConfig.CLIENT_ID, AppConfig.CLIENT_SECRET)
-            setBody("grant_type=client_credentials&scope=openid vc:issue")
-        }.body()
-
-        return response
-    }
-
     suspend fun exchangeAuthorizationCodeForToken(
         code: String,
         codeVerifier: String,
-        redirectUri: String = "myapp://callback"
-    ): Result<String> {
+        redirectUri: String = "myapp://callback",
+        tokenUrl: String = AppConfig.AUTH_SERVER_TOKEN_URL,
+        authServerIssuer: String = AppConfig.AUTH_SERVER_ISSUER,
+        sendWia: Boolean = true
+    ): Result<AccessTokenResponse> {
         return try {
-            val tokenUrl = AppConfig.AUTH_SERVER_TOKEN_URL
             val clientId = AppConfig.CLIENT_ID
 
-            val dpopProof = dpopManager.createDPoPProof(
-                httpMethod = "POST",
-                httpUri = tokenUrl
+            val response = sendTokenRequest(
+                tokenUrl, clientId, code, codeVerifier, redirectUri,
+                dpopNonce = null, authServerIssuer = authServerIssuer, sendWia = sendWia
             )
 
-            val response = client.submitForm(
-                url = tokenUrl,
-                formParameters = Parameters.build {
-                    append("grant_type", "authorization_code")
-                    append("code", code)
-                    append("redirect_uri", redirectUri)
-                    append("code_verifier", codeVerifier)
-                    append("client_id", clientId)
+            // Handle use_dpop_nonce: retry with server-provided nonce (RFC 9449)
+            if (response.status.value == 400) {
+                val bodyText = response.bodyAsText()
+                if (bodyText.contains("use_dpop_nonce")) {
+                    val dpopNonce = response.headers["DPoP-Nonce"]
+                    if (dpopNonce != null) {
+                        Log.d(TAG, "Server requires DPoP nonce, retrying with nonce")
+                        val retryResponse = sendTokenRequest(
+                            tokenUrl, clientId, code, codeVerifier, redirectUri,
+                            dpopNonce = dpopNonce, authServerIssuer = authServerIssuer, sendWia = sendWia
+                        )
+                        val accessTokenResponse = retryResponse.body<AccessTokenResponse>()
+                        Log.d(TAG, "Token type: ${accessTokenResponse.token_type}")
+                        return Result.success(accessTokenResponse)
+                    }
                 }
-            ) {
-                header("DPoP", dpopProof)
+                return Result.failure(Exception("Token request failed: $bodyText"))
+            }
 
-                // Add WIA authentication headers if WIA is available
+            val accessTokenResponse = response.body<AccessTokenResponse>()
+            Log.d(TAG, "Token type: ${accessTokenResponse.token_type}")
+            Result.success(accessTokenResponse)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun sendTokenRequest(
+        tokenUrl: String,
+        clientId: String,
+        code: String,
+        codeVerifier: String,
+        redirectUri: String,
+        dpopNonce: String?,
+        authServerIssuer: String,
+        sendWia: Boolean
+    ): HttpResponse {
+        val dpopProof = dpopManager.createDPoPProof(
+            httpMethod = "POST",
+            httpUri = tokenUrl,
+            nonce = dpopNonce
+        )
+
+        return client.submitForm(
+            url = tokenUrl,
+            formParameters = Parameters.build {
+                append("grant_type", "authorization_code")
+                append("code", code)
+                append("redirect_uri", redirectUri)
+                append("code_verifier", codeVerifier)
+                append("client_id", clientId)
+            }
+        ) {
+            header("DPoP", dpopProof)
+
+            if (sendWia) {
                 wiaService?.getStoredWia()?.let { wia ->
-                    Log.d("IssuanceService", "Adding WIA authentication headers")
-                    val popJwt = wiaService.createPopJwt(AppConfig.AUTH_SERVER_ISSUER)
+                    Log.d(TAG, "Adding WIA authentication headers")
+                    val popJwt = wiaService.createPopJwt(authServerIssuer)
                     header("OAuth-Client-Attestation", wia)
                     header("OAuth-Client-Attestation-PoP", popJwt)
                 }
             }
-
-            val accessTokenResponse = response.body<AccessTokenResponse>()
-            Log.d("IssuanceService", "Token type: ${accessTokenResponse.token_type}")
-            Result.success(accessTokenResponse.access_token)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
     }
 
@@ -170,30 +300,39 @@ class IssuanceService(
      */
     suspend fun pushAuthorizationRequest(
         codeChallenge: String,
-        codeChallengeMethod: String = "S256"
+        codeChallengeMethod: String = "S256",
+        parUrl: String = AppConfig.AUTH_SERVER_PAR_URL,
+        scope: String = AppConfig.SCOPE,
+        authServerIssuer: String = AppConfig.AUTH_SERVER_ISSUER,
+        issuerState: String? = null,
+        sendWia: Boolean = true,
+        authorizationDetails: String? = null
     ): Result<String> {
         return try {
-            val parUrl = AppConfig.AUTH_SERVER_PAR_URL
             val clientId = AppConfig.CLIENT_ID
-            Log.d(TAG, "Pushing authorization request to PAR endpoint: $parUrl")
+            Log.d(TAG, "Pushing authorization request to PAR endpoint: $parUrl (scope=$scope, hasRAR=${authorizationDetails != null})")
 
             val response = client.submitForm(
                 url = parUrl,
                 formParameters = Parameters.build {
                     append("response_type", "code")
                     append("client_id", clientId)
-                    append("scope", AppConfig.SCOPE)
+                    append("scope", scope)
+                    authorizationDetails?.let { append("authorization_details", it) }
                     append("redirect_uri", AppConfig.REDIRECT_URI)
                     append("code_challenge", codeChallenge)
                     append("code_challenge_method", codeChallengeMethod)
+                    issuerState?.let { append("issuer_state", it) }
                 }
             ) {
                 // Add WIA authentication headers if WIA is available
-                wiaService?.getStoredWia()?.let { wia ->
-                    Log.d(TAG, "Adding WIA authentication headers to PAR request")
-                    val popJwt = wiaService.createPopJwt(AppConfig.AUTH_SERVER_ISSUER)
-                    header("OAuth-Client-Attestation", wia)
-                    header("OAuth-Client-Attestation-PoP", popJwt)
+                if (sendWia) {
+                    wiaService?.getStoredWia()?.let { wia ->
+                        Log.d(TAG, "Adding WIA authentication headers to PAR request")
+                        val popJwt = wiaService.createPopJwt(authServerIssuer)
+                        header("OAuth-Client-Attestation", wia)
+                        header("OAuth-Client-Attestation-PoP", popJwt)
+                    }
                 }
             }
 
@@ -212,20 +351,27 @@ class IssuanceService(
         }
     }
 
-    suspend fun getNonce(accessToken: String): String {
-        val nonceUrl = "${AppConfig.ISSUER_URL}/credential/nonce"
+    /**
+     * Build RFC 9396 authorization_details JSON for OID4VCI.
+     * Each entry has type "openid_credential" and a credential_configuration_id.
+     * When credentialIssuerUrl is provided, includes "locations" array per OID4VCI 5.1.1
+     * (REQUIRED when issuer metadata contains authorization_servers).
+     */
+    fun buildAuthorizationDetails(
+        credentialConfigurationIds: List<String>,
+        credentialIssuerUrl: String? = null
+    ): String {
+        val details = credentialConfigurationIds.map { configId ->
+            val locations = if (credentialIssuerUrl != null) {
+                ""","locations":["$credentialIssuerUrl"]"""
+            } else ""
+            """{"type":"openid_credential","credential_configuration_id":"$configId"$locations}"""
+        }
+        return "[${details.joinToString(",")}]"
+    }
 
-        val dpopProof = dpopManager.createDPoPProof(
-            httpMethod = "GET",
-            httpUri = nonceUrl,
-            accessTokenHash = dpopManager.computeAccessTokenHash(accessToken)
-        )
-
-        val response: NonceResponse = client.get(nonceUrl) {
-            header("Authorization", "DPoP $accessToken")
-            header("DPoP", dpopProof)
-        }.body()
-
+    suspend fun getNonce(nonceUrl: String = "${AppConfig.ISSUER_URL}/credential/nonce"): String {
+        val response: NonceResponse = client.post(nonceUrl).body()
         return response.c_nonce
     }
 
@@ -237,25 +383,38 @@ class IssuanceService(
      * @param wuaJwt The Wallet Unit Attestation JWT (from encrypted SharedPreferences)
      * @return Serialized JWT proof string
      */
-    fun createJwtProof(nonce: String, wuaJwt: String): String {
-        Log.d("IssuanceService", "Creating JWT proof with WUA key_attestation")
-
-        val header = JWSHeader.Builder(JWSAlgorithm.ES256)
+    fun createJwtProof(
+        nonce: String,
+        wuaJwt: String?,
+        audience: String = AppConfig.ISSUER_URL
+    ): String {
+        val headerBuilder = JWSHeader.Builder(JWSAlgorithm.ES256)
             .type(JOSEObjectType("openid4vci-proof+jwt"))
-            .keyID("0")  // Index into attested_keys in WUA
-            .customParam("key_attestation", wuaJwt)
-            .build()
+
+        if (wuaJwt != null) {
+            // HAIP mode: use key_attestation (WUA) with kid referencing attested_keys index
+            Log.d("IssuanceService", "Creating JWT proof with WUA key_attestation")
+            headerBuilder.keyID("0")
+            headerBuilder.customParam("key_attestation", wuaJwt)
+        } else {
+            // Standard mode: include jwk directly in header
+            Log.d("IssuanceService", "Creating JWT proof with jwk header")
+            headerBuilder.jwk(walletKeyManager.getWalletKey().toPublicJWK())
+        }
+
+        val header = headerBuilder.build()
 
         val claims = JWTClaimsSet.Builder()
             .issuer("wallet-client")
-            .audience(AppConfig.ISSUER_URL)
+            .audience(audience)
             .issueTime(Date())
             .expirationTime(Date(System.currentTimeMillis() + 300000))
             .claim("nonce", nonce)
             .build()
 
         val signedJWT = SignedJWT(header, claims)
-        val signer = AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)  // WUA key (attested)
+        val keyAlias = if (wuaJwt != null) AppConfig.WUA_KEY_ALIAS else AppConfig.KEY_ALIAS
+        val signer = AndroidKeystoreSigner(keyAlias)
         signedJWT.sign(signer)
 
         return signedJWT.serialize()
@@ -265,17 +424,12 @@ class IssuanceService(
         accessToken: String,
         jwtProof: String,
         credentialConfig: CredentialConfiguration? = null,
-        format: String = AppConfig.FORMAT_SD_JWT
+        format: String = AppConfig.FORMAT_SD_JWT,
+        credentialUrl: String = "${AppConfig.ISSUER_URL}/credential",
+        credentialConfigId: String? = null,
+        displayName: String? = null
     ): String {
-        val credentialUrl = "${AppConfig.ISSUER_URL}/credential"
-
-        val dpopProof = dpopManager.createDPoPProof(
-            httpMethod = "POST",
-            httpUri = credentialUrl,
-            accessTokenHash = dpopManager.computeAccessTokenHash(accessToken)
-        )
-
-        val credentialConfigId = if (format == AppConfig.FORMAT_MSO_MDOC) {
+        val resolvedConfigId = credentialConfigId ?: if (format == AppConfig.FORMAT_MSO_MDOC) {
             AppConfig.MDOC_CREDENTIAL_CONFIG_ID
         } else {
             AppConfig.SD_JWT_CREDENTIAL_CONFIG_ID
@@ -283,33 +437,93 @@ class IssuanceService(
 
         val requestBody = """
             {
-              "format": "$format",
-              "credentialConfigurationId": "$credentialConfigId",
-              "proof": {
-                "proofType": "jwt",
-                "jwt": "$jwtProof"
+              "credential_configuration_id": "$resolvedConfigId",
+              "proofs": {
+                "jwt": ["$jwtProof"]
               }
             }
         """.trimIndent()
 
-        val response: HttpResponse = client.post(credentialUrl) {
+        var response = sendCredentialRequest(credentialUrl, accessToken, requestBody, dpopNonce = null)
+
+        // Handle use_dpop_nonce: retry with server-provided nonce (RFC 9449)
+        if (response.status.value == 401) {
+            val dpopNonce = response.headers["DPoP-Nonce"]
+            if (dpopNonce != null) {
+                Log.d(TAG, "Credential endpoint requires DPoP nonce, retrying")
+                response = sendCredentialRequest(credentialUrl, accessToken, requestBody, dpopNonce)
+            }
+        }
+
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            throw Exception("Credential request failed (${response.status.value}): $errorBody")
+        }
+
+        val credential = extractCredentialFromResponse(response)
+
+        // Verify and store the credential (with optional metadata)
+        val isDynamicIssuer = credentialUrl != "${AppConfig.ISSUER_URL}/credential"
+        if (isDynamicIssuer) {
+            Log.d(TAG, "Dynamic issuer — skipping JWKS cross-validation")
+        } else if (format == AppConfig.FORMAT_MSO_MDOC) {
+            Log.d(TAG, "mDoc credential received, skipping client-side signature verification")
+        } else {
+            sdJwtCredentialService.verify(credential)
+        }
+        // Build effective config with display name for dynamic issuers
+        val effectiveConfig = credentialConfig ?: displayName?.let {
+            CredentialConfiguration(
+                format = format,
+                display = listOf(com.example.eudiwemu.dto.CredentialDisplay(name = it))
+            )
+        }
+        storeCredential(credential, resolvedConfigId, effectiveConfig, format)
+
+        return credential
+    }
+
+    /**
+     * Extract credential from response, supporting both OID4VCI 1.0 Final format
+     * (credentials array of objects) and legacy flat format.
+     */
+    private suspend fun sendCredentialRequest(
+        credentialUrl: String,
+        accessToken: String,
+        requestBody: String,
+        dpopNonce: String?
+    ): HttpResponse {
+        val dpopProof = dpopManager.createDPoPProof(
+            httpMethod = "POST",
+            httpUri = credentialUrl,
+            accessTokenHash = dpopManager.computeAccessTokenHash(accessToken),
+            nonce = dpopNonce
+        )
+        return client.post(credentialUrl) {
             contentType(ContentType.Application.Json)
             header("Authorization", "DPoP $accessToken")
             header("DPoP", dpopProof)
             setBody(requestBody)
         }
-        val jsonResponse: Map<String, String> = response.body()
-        val credential = jsonResponse["credential"] ?: throw Exception("Failed to request credential")
+    }
 
-        // Verify and store the credential (with optional metadata)
-        if (format == AppConfig.FORMAT_MSO_MDOC) {
-            Log.d(TAG, "mDoc credential received, skipping client-side signature verification")
-        } else {
-            sdJwtCredentialService.verify(credential)
+    private suspend fun extractCredentialFromResponse(response: HttpResponse): String {
+        val body = response.bodyAsText()
+        val json = org.json.JSONObject(body)
+
+        // OID4VCI 1.0 Final: {"credentials": [{"credential": "eyJ..."}]}
+        val credentials = json.optJSONArray("credentials")
+        if (credentials != null && credentials.length() > 0) {
+            val first = credentials.getJSONObject(0)
+            val cred = first.optString("credential", null)
+            if (!cred.isNullOrEmpty()) return cred
         }
-        storeCredential(credential, credentialConfigId, credentialConfig, format)
 
-        return credential
+        // Legacy fallback: {"credential": "eyJ..."}
+        val credential = json.optString("credential", null)
+        if (!credential.isNullOrEmpty()) return credential
+
+        throw Exception("Failed to extract credential from response: $body")
     }
 
     /**
