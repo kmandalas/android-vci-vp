@@ -85,3 +85,9 @@ Both formats are supported end-to-end with the EU Reference Verifier.
 This repo contains an **experimental project** created for learning and demonstration purposes. The implementation is **not intended for production** use.
 
 </details>
+
+---
+
+## License
+
+[Business Source License 1.1](./LICENSE) — free for non-production use. For production licensing, [contact me](https://github.com/kmandalas).
