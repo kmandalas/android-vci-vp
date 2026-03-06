@@ -110,10 +110,10 @@ dependencies {
     implementation ("androidx.biometric:biometric:1.4.0-alpha02")
 
     // Authlete SD-JWT
-    implementation("com.authlete:sd-jwt:1.5")
+    implementation("com.authlete:sd-jwt:1.7")
 
     // Authlete CBOR (for mDoc support)
-    implementation("com.authlete:cbor:1.16")
+    implementation("com.authlete:cbor:1.19")
 
     // Multipaz (ISO 18013-5 proximity presentation transport)
     implementation(libs.multipaz) {
