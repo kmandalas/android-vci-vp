@@ -17,6 +17,9 @@ import com.example.eudiwemu.dto.CredentialOffer
 import com.example.eudiwemu.model.IssuerSession
 import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.getEncryptedPrefs
+import com.example.eudiwemu.data.dao.TransactionLogDao
+import com.example.eudiwemu.data.entity.TransactionLogEntry
+import com.example.eudiwemu.service.ExportImportService
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.service.WiaService
@@ -36,7 +39,9 @@ class WalletViewModel(
     private val issuanceService: IssuanceService,
     private val vpTokenService: VpTokenService,
     private val wuaService: WuaService,
-    private val wiaService: WiaService
+    private val wiaService: WiaService,
+    private val transactionLogDao: TransactionLogDao,
+    private val exportImportService: ExportImportService
 ) : ViewModel() {
 
     var credentialList by mutableStateOf<List<CredentialUiState>>(emptyList())
@@ -58,6 +63,9 @@ class WalletViewModel(
         private set
 
     var isInitializing by mutableStateOf(true)
+        private set
+
+    var transactionLog by mutableStateOf<List<TransactionLogEntry>>(emptyList())
         private set
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -262,6 +270,13 @@ class WalletViewModel(
                 if (vcResult.isSuccess) {
                     val (message, credentialKey) = vcResult.getOrNull()!!
                     addOrReplaceCredentialInList(credentialKey)
+                    val cred = credentialList.find { it.credentialKey == credentialKey }
+                    logTransaction(TransactionLogEntry(
+                        transactionType = TransactionLogEntry.TYPE_ISSUANCE,
+                        credentialType = credentialKey,
+                        credentialFormat = cred?.credentialFormat ?: pendingFormat,
+                        credentialDisplayName = cred?.credentialDisplayName
+                    ))
                     _events.send(WalletEvent.ShowSnackbar(message))
                     _events.send(WalletEvent.NavigateToDetail(credentialKey))
                 } else {
@@ -372,6 +387,13 @@ class WalletViewModel(
                     if (result.isSuccess) {
                         val (message, credentialKey) = result.getOrNull()!!
                         addOrReplaceCredentialInList(credentialKey)
+                        val cred = credentialList.find { it.credentialKey == credentialKey }
+                        logTransaction(TransactionLogEntry(
+                            transactionType = TransactionLogEntry.TYPE_ISSUANCE,
+                            credentialType = credentialKey,
+                            credentialFormat = cred?.credentialFormat ?: selectedFormatValue,
+                            credentialDisplayName = cred?.credentialDisplayName
+                        ))
                         _events.send(WalletEvent.ShowSnackbar(message))
                         _events.send(WalletEvent.NavigateToDetail(credentialKey))
                     } else {
@@ -518,11 +540,18 @@ class WalletViewModel(
     fun deleteCredential(credentialKey: String) {
         viewModelScope.launch {
             try {
+                val cred = credentialList.find { it.credentialKey == credentialKey }
                 issuanceService.removeCredential(credentialKey)
                 credentialList = credentialList.filter { it.credentialKey != credentialKey }
                 if (selectedCredentialKey == credentialKey) {
                     selectedCredentialKey = null
                 }
+                logTransaction(TransactionLogEntry(
+                    transactionType = TransactionLogEntry.TYPE_DELETION,
+                    credentialType = credentialKey,
+                    credentialFormat = cred?.credentialFormat,
+                    credentialDisplayName = cred?.credentialDisplayName
+                ))
                 _events.send(WalletEvent.ShowSnackbar("🗑️ Credential deleted"))
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error deleting credential", e)
@@ -554,6 +583,15 @@ class WalletViewModel(
                     vpTokenService.sendVpTokenToVerifier(vpToken, vpRequestState.responseUri, authRequest)
                 }
 
+                val cred = credentialList.find { it.credentialKey == targetKey }
+                logTransaction(TransactionLogEntry(
+                    transactionType = TransactionLogEntry.TYPE_PRESENTATION,
+                    credentialType = targetKey,
+                    credentialFormat = cred?.credentialFormat,
+                    credentialDisplayName = cred?.credentialDisplayName,
+                    counterpartyName = vpRequestState.clientName.ifEmpty { null },
+                    attributeIds = selected.joinToString(",") { it.claimName ?: "" }
+                ))
                 handleVerifierResponse(serverResponse)
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error sending VP Token", e)
@@ -592,6 +630,15 @@ class WalletViewModel(
                     vpTokenService.sendVpTokenToVerifier(vpToken, vpRequestState.responseUri, authRequest)
                 }
 
+                val cred = credentialList.find { it.credentialKey == targetKey }
+                logTransaction(TransactionLogEntry(
+                    transactionType = TransactionLogEntry.TYPE_PRESENTATION,
+                    credentialType = targetKey,
+                    credentialFormat = cred?.credentialFormat,
+                    credentialDisplayName = cred?.credentialDisplayName,
+                    counterpartyName = vpRequestState.clientName.ifEmpty { null },
+                    attributeIds = selectedNames.joinToString(",")
+                ))
                 handleVerifierResponse(serverResponse)
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error sending mDoc VP Token", e)
@@ -671,6 +718,15 @@ class WalletViewModel(
                 }
 
                 proximityService?.sendResponse(responseBytes)
+
+                val cred = credentialList.find { it.credentialKey == credKey }
+                logTransaction(TransactionLogEntry(
+                    transactionType = TransactionLogEntry.TYPE_PROXIMITY_PRESENTATION,
+                    credentialType = credKey,
+                    credentialFormat = cred?.credentialFormat,
+                    credentialDisplayName = cred?.credentialDisplayName,
+                    attributeIds = selectedClaims.joinToString(",")
+                ))
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error sending proximity response", e)
                 proximityState = proximityState.copy(status = "Error: ${e.message}")
@@ -687,6 +743,61 @@ class WalletViewModel(
 
     fun flattenClaimsForDisplay(claims: Map<String, Any>): Map<String, String> {
         return issuanceService.flattenClaimsForDisplay(claims)
+    }
+
+    // --- Transaction Log ---
+
+    fun loadTransactionLog() {
+        viewModelScope.launch {
+            transactionLog = withContext(Dispatchers.IO) {
+                transactionLogDao.getAll()
+            }
+        }
+    }
+
+    private fun logTransaction(entry: TransactionLogEntry) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { transactionLogDao.insert(entry) }
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Failed to log transaction", e)
+            }
+        }
+    }
+
+    fun startExport(password: String, activity: FragmentActivity) {
+        viewModelScope.launch {
+            try {
+                val payload = withContext(Dispatchers.IO) {
+                    exportImportService.buildExportPayload(activity)
+                }
+                val encrypted = withContext(Dispatchers.Default) {
+                    exportImportService.encrypt(payload, password)
+                }
+                _events.send(WalletEvent.ExportReady(encrypted))
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Export failed", e)
+                _events.send(WalletEvent.ShowSnackbar("❌ Export failed: ${e.message}"))
+            }
+        }
+    }
+
+    fun processImport(data: ByteArray, password: String) {
+        viewModelScope.launch {
+            try {
+                val payload = withContext(Dispatchers.Default) {
+                    exportImportService.decrypt(data, password)
+                }
+                val count = withContext(Dispatchers.IO) {
+                    exportImportService.importTransactionLog(payload.transactionLog)
+                }
+                loadTransactionLog()
+                _events.send(WalletEvent.ImportComplete(count, payload.credentialMetadata))
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Import failed", e)
+                _events.send(WalletEvent.ShowSnackbar("❌ Import failed: ${e.message}"))
+            }
+        }
     }
 
     // --- Credential Offer Flow ---

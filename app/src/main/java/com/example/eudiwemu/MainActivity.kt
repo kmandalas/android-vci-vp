@@ -19,6 +19,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.example.eudiwemu.ui.CredentialDetailScreen
 import com.example.eudiwemu.ui.LoginScreen
+import com.example.eudiwemu.ui.TransactionLogScreen
 import com.example.eudiwemu.ui.WalletScreen
 import com.example.eudiwemu.ui.theme.KWalletTheme
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
@@ -111,6 +112,14 @@ fun MainNavHost(
                 intent = intent,
                 viewModel = walletViewModel,
                 navController = navController
+            )
+        }
+        composable("transaction_log") {
+            val walletViewModel: WalletViewModel = koinViewModel(viewModelStoreOwner = activity)
+            TransactionLogScreen(
+                viewModel = walletViewModel,
+                activity = activity,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(

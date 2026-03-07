@@ -1,8 +1,11 @@
 package com.example.eudiwemu.di
 
 import android.util.Log
+import androidx.room.Room
 import com.example.eudiwemu.BuildConfig
+import com.example.eudiwemu.data.WalletDatabase
 import com.example.eudiwemu.security.WalletKeyManager
+import com.example.eudiwemu.service.ExportImportService
 import com.example.eudiwemu.service.IssuanceService
 import com.example.eudiwemu.service.VpTokenService
 import com.example.eudiwemu.service.WiaService
@@ -44,11 +47,22 @@ val appModule = module {
     // Provide WalletKeyManager as a singleton
     single { WalletKeyManager() }
 
+    // Room Database
+    single {
+        Room.databaseBuilder(
+            androidContext(),
+            WalletDatabase::class.java,
+            "wallet_database"
+        ).build()
+    }
+    single { get<WalletDatabase>().transactionLogDao() }
+
     // Define single instances of your services
     single { WiaService(get(), get(), androidContext()) }
     single { IssuanceService(get(), get(), androidContext(), get()) }
     single { VpTokenService(get(), get()) }
     single { WuaService(get(), get(), androidContext()) }
+    single { ExportImportService(get()) }
 
-    viewModel { WalletViewModel(get(), get(), get(), get()) }
+    viewModel { WalletViewModel(get(), get(), get(), get(), get(), get()) }
 }

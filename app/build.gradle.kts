@@ -2,8 +2,8 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
     alias(libs.plugins.composeCompiler)
-
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.10"
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 // Read LOCAL_IP from gradle.properties (defaults to localhost if not set)
@@ -29,16 +29,16 @@ android {
         debug {
             isMinifyEnabled = false
             // Uses LOCAL_IP from gradle.properties
-            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
-            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
-            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
-            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
+//            buildConfigField("String", "AUTH_SERVER_HOST", "\"${localIp}:9000\"")
+//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
+//            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
+//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
 
             // Uses render.com backend
-//            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
-//            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
-//            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
-//            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
+            buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
+            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.onrender.com/oauth2/token\"")
+            buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.onrender.com\"")
+            buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.onrender.com/wp\"")
         }
         release {
             isMinifyEnabled = true
@@ -82,7 +82,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -92,28 +92,28 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // Networking
-    implementation("io.ktor:ktor-client-core:2.3.0")
-    implementation("io.ktor:ktor-client-cio:2.3.0")
-    implementation("io.ktor:ktor-client-json:2.3.0")
-    implementation("io.ktor:ktor-client-serialization:2.3.0")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.0")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.0")
-    implementation("io.ktor:ktor-client-android:2.3.0")
-    implementation("io.ktor:ktor-client-logging:2.3.0")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.json)
+    implementation(libs.ktor.client.serialization)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.android)
+    implementation(libs.ktor.client.logging)
 
     // JSON Processing
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.0")
+    implementation(libs.kotlinx.serialization.json)
 
     // Security & Cryptography
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("com.nimbusds:nimbus-jose-jwt:9.37")
-    implementation ("androidx.biometric:biometric:1.4.0-alpha02")
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.nimbus.jose.jwt)
+    implementation(libs.androidx.biometric)
 
     // Authlete SD-JWT
-    implementation("com.authlete:sd-jwt:1.7")
+    implementation(libs.authlete.sd.jwt)
 
     // Authlete CBOR (for mDoc support)
-    implementation("com.authlete:cbor:1.19")
+    implementation(libs.authlete.cbor)
 
     // Multipaz (ISO 18013-5 proximity presentation transport)
     implementation(libs.multipaz) {
@@ -127,14 +127,23 @@ dependencies {
     implementation(libs.zxing.core)
 
     // QR Scanning
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode.scanning)
 
-    // Other
-    implementation ("io.insert-koin:koin-android:3.5.0")
-    implementation("io.insert-koin:koin-androidx-compose:3.5.0")
-    implementation ("androidx.navigation:navigation-compose:2.4.0-alpha10")
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    // DI
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
+
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+
+    // Image Loading
+    implementation(libs.coil.compose)
+
+    // Room Database
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 }

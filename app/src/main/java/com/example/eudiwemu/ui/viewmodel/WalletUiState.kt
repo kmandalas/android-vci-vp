@@ -61,4 +61,10 @@ sealed class WalletEvent {
     data class ShowSnackbar(val message: String) : WalletEvent()
     data class OpenBrowser(val uri: String) : WalletEvent()
     data class NavigateToDetail(val credentialKey: String) : WalletEvent()
+    data object NavigateToTransactionLog : WalletEvent()
+    data class ExportReady(val data: ByteArray) : WalletEvent()
+    data class ImportComplete(
+        val logCount: Int,
+        val credentialHints: List<com.example.eudiwemu.service.ExportImportService.CredentialMetadataDto>
+    ) : WalletEvent()
 }
