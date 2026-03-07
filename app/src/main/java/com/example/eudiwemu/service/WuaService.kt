@@ -225,6 +225,10 @@ class WuaService(
         // Store raw expiration for display formatting
         claims.expirationTime?.let { result["expires_at_date"] = it }
 
+        // Determine validity status
+        val isValid = claims.expirationTime?.after(Date()) ?: false
+        result["status"] = if (isValid) "active" else "expired"
+
         // Try to extract key_storage from top-level claim (OID4VCI standard)
         val keyStorage = claims.getStringListClaim("key_storage")
         if (!keyStorage.isNullOrEmpty()) {
@@ -369,6 +373,27 @@ class WuaService(
 
         if (!isWuaValid(wua)) {
             Log.d(TAG, "Stored WUA is expired or invalid")
+            return null
+        }
+
+        return wua
+    }
+
+    /**
+     * Get stored WUA credential without expiration check.
+     * Returns the raw JWT even if expired, for display purposes.
+     *
+     * @return The WUA JWT string, or null if not stored or prefs not initialized
+     */
+    fun getStoredWuaRaw(): String? {
+        if (_encryptedPrefs == null) {
+            Log.d(TAG, "WuaService not initialized with Activity, cannot get stored WUA")
+            return null
+        }
+
+        val wua = encryptedPrefs.getString(AppConfig.STORED_WUA, null)
+        if (wua.isNullOrEmpty()) {
+            Log.d(TAG, "No stored WUA found")
             return null
         }
 

@@ -57,6 +57,9 @@ class WalletViewModel(
     var proximityState by mutableStateOf(ProximityState())
         private set
 
+    var isInitializing by mutableStateOf(true)
+        private set
+
     private val json = Json { ignoreUnknownKeys = true }
 
     var bannerMessage by mutableStateOf<String?>(null)
@@ -105,51 +108,60 @@ class WalletViewModel(
                 wiaService.initWithActivity(activity)
                 issuanceService.initWithActivity(activity)
 
-                // Fetch issuer metadata for dynamic dropdown (skip if already cached)
-                if (issuanceState.credentialConfigs.isEmpty()) {
-                    try {
-                        val metadata = withContext(Dispatchers.IO) {
-                            issuanceService.fetchIssuerMetadata()
-                        }
-                        val configs = metadata.credential_configurations_supported
-                        val dynamicTypes = configs.mapNotNull { (configId, config) ->
-                            val displayName = config.resolvedDisplay()?.firstOrNull()?.name
-                            if (displayName != null) displayName to configId else null
-                        }.toMap()
-                        issuanceState = issuanceState.copy(
-                            credentialConfigs = configs,
-                            credentialTypes = dynamicTypes.ifEmpty { issuanceState.credentialTypes }
-                        )
-                        Log.d("WalletApp", "Loaded ${configs.size} credential configurations from issuer metadata")
-                    } catch (e: Exception) {
-                        Log.w("WalletApp", "Failed to fetch issuer metadata, using fallback dropdown", e)
-                    }
-                }
-
-                // Load WUA
-                val storedWua = wuaService.getStoredWua()
-                if (!storedWua.isNullOrEmpty()) {
-                    try {
-                        attestationState = attestationState.copy(wuaInfo = wuaService.decodeWuaCredential(storedWua))
-                    } catch (e: Exception) {
-                        Log.e("WalletApp", "Error decoding stored WUA", e)
-                    }
-                }
-
-                // Load WIA
-                val storedWia = wiaService.getStoredWia()
-                if (!storedWia.isNullOrEmpty()) {
-                    try {
-                        attestationState = attestationState.copy(wiaInfo = wiaService.decodeWiaCredential(storedWia))
-                    } catch (e: Exception) {
-                        Log.e("WalletApp", "Error decoding stored WIA", e)
-                    }
-                }
-
-                // Load all stored credentials
+                // Load local data first (no network needed)
+                loadStoredAttestations()
                 loadAllCredentials()
+                isInitializing = false
+
+                // Fetch issuer metadata last (network call, only affects dropdown)
+                fetchIssuerMetadata()
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error initializing services: $e")
+                isInitializing = false
+            }
+        }
+    }
+
+    private fun loadStoredAttestations() {
+        // Load WUA (use raw retrieval to show expired attestations)
+        val storedWua = wuaService.getStoredWuaRaw()
+        if (!storedWua.isNullOrEmpty()) {
+            try {
+                attestationState = attestationState.copy(wuaInfo = wuaService.decodeWuaCredential(storedWua))
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error decoding stored WUA", e)
+            }
+        }
+
+        // Load WIA (use raw retrieval to show expired attestations)
+        val storedWia = wiaService.getStoredWiaRaw()
+        if (!storedWia.isNullOrEmpty()) {
+            try {
+                attestationState = attestationState.copy(wiaInfo = wiaService.decodeWiaCredential(storedWia))
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error decoding stored WIA", e)
+            }
+        }
+    }
+
+    private suspend fun fetchIssuerMetadata() {
+        if (issuanceState.credentialConfigs.isEmpty()) {
+            try {
+                val metadata = withContext(Dispatchers.IO) {
+                    issuanceService.fetchIssuerMetadata()
+                }
+                val configs = metadata.credential_configurations_supported
+                val dynamicTypes = configs.mapNotNull { (configId, config) ->
+                    val displayName = config.resolvedDisplay()?.firstOrNull()?.name
+                    if (displayName != null) displayName to configId else null
+                }.toMap()
+                issuanceState = issuanceState.copy(
+                    credentialConfigs = configs,
+                    credentialTypes = dynamicTypes.ifEmpty { issuanceState.credentialTypes }
+                )
+                Log.d("WalletApp", "Loaded ${configs.size} credential configurations from issuer metadata")
+            } catch (e: Exception) {
+                Log.w("WalletApp", "Failed to fetch issuer metadata, using fallback dropdown", e)
             }
         }
     }

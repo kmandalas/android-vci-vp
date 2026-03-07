@@ -304,6 +304,27 @@ class WiaService(
     }
 
     /**
+     * Get stored WIA credential without expiration check.
+     * Returns the raw JWT even if expired, for display purposes.
+     *
+     * @return The WIA JWT string, or null if not stored or prefs not initialized
+     */
+    fun getStoredWiaRaw(): String? {
+        if (_encryptedPrefs == null) {
+            Log.d(TAG, "WiaService not initialized with Activity, cannot get stored WIA")
+            return null
+        }
+
+        val wia = encryptedPrefs.getString(AppConfig.STORED_WIA, null)
+        if (wia.isNullOrEmpty()) {
+            Log.d(TAG, "No stored WIA found")
+            return null
+        }
+
+        return wia
+    }
+
+    /**
      * Check if a WIA credential is valid (not expired).
      *
      * @param wiaJwt The WIA JWT to check

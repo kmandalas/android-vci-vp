@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# SLF4J - referenced by transitive dependencies but not needed at runtime
+-dontwarn org.slf4j.impl.StaticLoggerBinder

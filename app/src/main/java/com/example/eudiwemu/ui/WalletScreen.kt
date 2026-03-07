@@ -102,6 +102,16 @@ fun WalletScreen(
     val issuanceState = viewModel.issuanceState
     val vpState = viewModel.vpRequestState
 
+    if (viewModel.isInitializing) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         floatingActionButton = {
