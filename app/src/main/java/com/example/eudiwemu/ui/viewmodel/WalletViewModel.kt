@@ -15,7 +15,9 @@ import com.authlete.sd.Disclosure
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.CredentialOffer
 import com.example.eudiwemu.model.IssuerSession
+import com.example.eudiwemu.security.DevicePostureService
 import com.example.eudiwemu.security.PkceManager
+import com.example.eudiwemu.security.SecurityPostureLevel
 import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.data.dao.TransactionLogDao
 import com.example.eudiwemu.data.entity.TransactionLogEntry
@@ -60,6 +62,9 @@ class WalletViewModel(
         private set
 
     var proximityState by mutableStateOf(ProximityState())
+        private set
+
+    var postureState by mutableStateOf(PostureState())
         private set
 
     var isInitializing by mutableStateOf(true)
@@ -119,6 +124,7 @@ class WalletViewModel(
                 // Load local data first (no network needed)
                 loadStoredAttestations()
                 loadAllCredentials()
+                checkDevicePosture(activity)
                 isInitializing = false
 
                 // Fetch issuer metadata last (network call, only affects dropdown)
@@ -149,6 +155,22 @@ class WalletViewModel(
             } catch (e: Exception) {
                 Log.e("WalletApp", "Error decoding stored WIA", e)
             }
+        }
+    }
+
+    private suspend fun checkDevicePosture(activity: FragmentActivity) {
+        try {
+            val report = withContext(Dispatchers.IO) {
+                DevicePostureService.evaluate(activity)
+            }
+            postureState = PostureState(
+                level = report.level,
+                findings = report.findings,
+                lastChecked = System.currentTimeMillis()
+            )
+            // Posture warnings are shown inline on WalletScreen via postureState — no events needed
+        } catch (e: Exception) {
+            Log.e("WalletApp", "Device posture check failed", e)
         }
     }
 
@@ -563,6 +585,10 @@ class WalletViewModel(
     fun submitSdJwtVpToken(selected: List<Disclosure>) {
         dismissSdJwtDialog()
         viewModelScope.launch {
+            if (postureState.level == SecurityPostureLevel.LEVEL_4) {
+                _events.send(WalletEvent.ShowSnackbar("❌ Presentation blocked: critical security issues detected"))
+                return@launch
+            }
             try {
                 val targetKey = vpRequestState.targetCredentialKey
                     ?: throw IllegalStateException("No target credential for VP")
@@ -603,6 +629,10 @@ class WalletViewModel(
     fun submitMDocVpToken(selectedNames: List<String>) {
         dismissMDocDialog()
         viewModelScope.launch {
+            if (postureState.level == SecurityPostureLevel.LEVEL_4) {
+                _events.send(WalletEvent.ShowSnackbar("❌ Presentation blocked: critical security issues detected"))
+                return@launch
+            }
             try {
                 val targetKey = vpRequestState.targetCredentialKey
                     ?: throw IllegalStateException("No target credential for VP")

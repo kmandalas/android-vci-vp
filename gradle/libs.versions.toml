@@ -25,6 +25,9 @@ koin = "3.5.0"
 navigationCompose = "2.4.0-alpha10"
 coil = "2.7.0"
 kotlinSerialization = "2.1.10"
+firebaseBom = "33.9.0"
+rootbeer = "0.1.0"
+googleServices = "4.4.2"
 
 [libraries]
 # AndroidX
@@ -91,6 +94,14 @@ koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", versi
 # Coil
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 
+# Firebase
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
+firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debug" }
+
+# Root Detection
+rootbeer = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeer" }
+
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -102,3 +113,4 @@ jetbrainsKotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "k
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlinSerialization" }
+googleServices = { id = "com.google.gms.google-services", version.ref = "googleServices" }

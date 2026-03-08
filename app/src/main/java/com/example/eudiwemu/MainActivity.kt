@@ -2,7 +2,6 @@ package com.example.eudiwemu
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -12,7 +11,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.eudiwemu.security.getEncryptedPrefs
 import com.example.eudiwemu.service.WiaService
 import com.example.eudiwemu.service.WuaService
 import androidx.navigation.NavType
@@ -39,27 +37,8 @@ class MainActivity : FragmentActivity() {
         currentIntent.value = intent
 
         lifecycleScope.launch {
-            try {
-                val prefs = getEncryptedPrefs(this@MainActivity.applicationContext, this@MainActivity)
-                val deviceUnlocked = prefs.getBoolean("device_unlocked", false)
-
-                // Initialize WiaService with activity context for encrypted prefs access
-                wiaService.initWithActivity(this@MainActivity)
-
-                isAuthenticated.value = deviceUnlocked
-            } catch (e: Exception) {
-                // KeyStoreException with "unusable" master key is expected when
-                // auth timeout expires - Tink will retry after biometric prompt
-                val isExpectedAuthTimeout = e is java.security.KeyStoreException &&
-                    e.message?.contains("unusable") == true
-
-                if (isExpectedAuthTimeout) {
-                    Log.d("MainActivity", "Master key requires re-authentication, biometric prompt will appear")
-                } else {
-                    Log.e("MainActivity", "Failed to get encrypted prefs", e)
-                }
-                isAuthenticated.value = false
-            }
+            // Always require biometric on every launch — never bypass LoginScreen
+            isAuthenticated.value = false
             setContent {
                 KWalletTheme(
                     darkTheme = false,

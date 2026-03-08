@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -57,6 +58,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
 import com.example.eudiwemu.QrScannerActivity
 import com.example.eudiwemu.config.AppConfig
+import com.example.eudiwemu.security.SecurityPostureLevel
 import com.example.eudiwemu.ui.viewmodel.WalletEvent
 import com.example.eudiwemu.ui.viewmodel.WalletViewModel
 
@@ -164,7 +166,38 @@ fun WalletScreen(
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                AttestationCarousel(wiaInfo = attestationState.wiaInfo, wuaInfo = attestationState.wuaInfo)
+                AttestationCarousel(
+                    wiaInfo = attestationState.wiaInfo,
+                    wuaInfo = attestationState.wuaInfo,
+                    postureState = viewModel.postureState
+                )
+
+                // Inline posture warning for Level 2-3
+                val posture = viewModel.postureState
+                if (posture.level != null &&
+                    posture.level != com.example.eudiwemu.security.SecurityPostureLevel.LEVEL_1 &&
+                    posture.level != com.example.eudiwemu.security.SecurityPostureLevel.LEVEL_4
+                ) {
+                    val bgColor = if (posture.level == com.example.eudiwemu.security.SecurityPostureLevel.LEVEL_3)
+                        androidx.compose.ui.graphics.Color(0xFFFF9800) else androidx.compose.ui.graphics.Color(0xFFFFEB3B)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .padding(vertical = 4.dp),
+                        color = bgColor.copy(alpha = 0.15f),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        tonalElevation = 0.dp
+                    ) {
+                        Text(
+                            text = "⚠️ ${posture.findings.joinToString(" · ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            color = if (posture.level == com.example.eudiwemu.security.SecurityPostureLevel.LEVEL_3)
+                                androidx.compose.ui.graphics.Color(0xFFE65100)
+                            else androidx.compose.ui.graphics.Color(0xFF5D4037)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -320,6 +353,24 @@ fun WalletScreen(
             purpose = vpState.purpose,
             onDismiss = { viewModel.dismissMDocDialog() },
             onConfirm = { selectedNames -> viewModel.submitMDocVpToken(selectedNames) }
+        )
+    }
+
+    // Level 4 posture blocking dialog
+    if (viewModel.postureState.level == SecurityPostureLevel.LEVEL_4) {
+        AlertDialog(
+            onDismissRequest = { /* non-dismissable */ },
+            title = { Text("Critical Security Alert") },
+            text = {
+                Column {
+                    Text("Your device has critical security issues that prevent credential operations:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    viewModel.postureState.findings.forEach { finding ->
+                        Text("• $finding", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = { }
         )
     }
 }

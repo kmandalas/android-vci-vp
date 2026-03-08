@@ -25,9 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.eudiwemu.security.SecurityPostureLevel
+import com.example.eudiwemu.ui.viewmodel.PostureState
 
 @Composable
-fun WuaStatusCard(wuaInfo: Map<String, Any>) {
+fun WuaStatusCard(wuaInfo: Map<String, Any>, postureState: PostureState = PostureState()) {
     val status = wuaInfo["status"] as? String ?: "active"
     val wscdType = wuaInfo["wscd_type"] as? String ?: "unknown"
     val securityLevel = wuaInfo["security_level"] as? String ?: "unknown"
@@ -45,7 +47,7 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
         modifier = Modifier
             .padding(vertical = 4.dp)
             .fillMaxWidth()
-            .height(180.dp),
+            .height(200.dp),
         elevation = CardDefaults.cardElevation(4.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
@@ -102,12 +104,19 @@ fun WuaStatusCard(wuaInfo: Map<String, Any>) {
             WuaDetailRow("WSCD Type", formatWscdType(wscdType))
             WuaDetailRow("Expires", expiresAtFormatted)
             WuaDetailRow("WUA ID", if (wuaId.length > 8) wuaId.take(8) + "..." else wuaId)
+            postureState.level?.let { level ->
+                WuaDetailRow(
+                    "Device Posture",
+                    formatPostureLevel(level),
+                    valueColor = postureColor(level)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun WuaDetailRow(label: String, value: String) {
+private fun WuaDetailRow(label: String, value: String, valueColor: Color? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -122,7 +131,8 @@ private fun WuaDetailRow(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            color = valueColor ?: Color.Unspecified
         )
     }
 }
@@ -149,5 +159,23 @@ private fun formatSecurityLevel(securityLevel: String): String {
         "iso_18045_enhanced-basic" -> "ISO 18045 Enhanced-Basic"
         "iso_18045_basic" -> "ISO 18045 Basic"
         else -> securityLevel.replaceFirstChar { it.uppercase() }
+    }
+}
+
+private fun formatPostureLevel(level: SecurityPostureLevel): String {
+    return when (level) {
+        SecurityPostureLevel.LEVEL_1 -> "Secure"
+        SecurityPostureLevel.LEVEL_2 -> "Moderate"
+        SecurityPostureLevel.LEVEL_3 -> "High Risk"
+        SecurityPostureLevel.LEVEL_4 -> "Critical"
+    }
+}
+
+private fun postureColor(level: SecurityPostureLevel): Color {
+    return when (level) {
+        SecurityPostureLevel.LEVEL_1 -> Color(0xFF4CAF50)
+        SecurityPostureLevel.LEVEL_2 -> Color(0xFFFFEB3B)
+        SecurityPostureLevel.LEVEL_3 -> Color(0xFFFF9800)
+        SecurityPostureLevel.LEVEL_4 -> Color(0xFFF44336)
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.eudiwemu.ui.viewmodel.PostureState
 
 /**
  * A carousel displaying WIA and WUA attestation cards.
@@ -18,7 +19,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AttestationCarousel(
     wiaInfo: Map<String, Any>?,
-    wuaInfo: Map<String, Any>?
+    wuaInfo: Map<String, Any>?,
+    postureState: PostureState = PostureState()
 ) {
     // Build list of available attestations
     val items = buildList {
@@ -43,7 +45,7 @@ fun AttestationCarousel(
         val (type, info) = items[index]
         when (type) {
             "WIA" -> WiaStatusCard(info)
-            "WUA" -> WuaStatusCard(info)
+            "WUA" -> WuaStatusCard(info, postureState)
         }
     }
 }

@@ -4,6 +4,7 @@ import com.authlete.sd.Disclosure
 import com.example.eudiwemu.dto.AuthorizationRequestResponse
 import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.CredentialConfiguration
+import com.example.eudiwemu.security.SecurityPostureLevel
 import com.example.eudiwemu.service.mdoc.DeviceRequestParser
 import com.example.eudiwemu.util.ClaimMetadataResolver
 
@@ -47,6 +48,12 @@ data class VpRequestState(
     val mdocAvailableClaims: List<String>? = null,
     val vpClaimResolver: ClaimMetadataResolver? = null,
     val targetCredentialKey: String? = null
+)
+
+data class PostureState(
+    val level: SecurityPostureLevel? = null,
+    val findings: List<String> = emptyList(),
+    val lastChecked: Long? = null
 )
 
 data class ProximityState(

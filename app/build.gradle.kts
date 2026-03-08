@@ -1,13 +1,23 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.googleServices)
 }
 
 // Read LOCAL_IP from gradle.properties (defaults to localhost if not set)
 val localIp: String = project.findProperty("LOCAL_IP")?.toString() ?: "localhost"
+
+// Read local.properties for secrets kept out of version control
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
+}
+val appCheckDebugToken: String = localProperties.getProperty("APP_CHECK_DEBUG_TOKEN", "")
 
 android {
     namespace = "com.example.eudiwemu"
@@ -33,6 +43,8 @@ android {
 //            buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"http://${localIp}:9000/oauth2/token\"")
 //            buildConfigField("String", "ISSUER_URL", "\"http://${localIp}:8080\"")
 //            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
+
+            buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"$appCheckDebugToken\"")
 
             // Uses render.com backend
             buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
@@ -146,4 +158,12 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    // Firebase App Check
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.appcheck.playintegrity)
+    debugImplementation(libs.firebase.appcheck.debug)
+
+    // Root Detection
+    implementation(libs.rootbeer)
 }

@@ -45,7 +45,7 @@ fun WiaStatusCard(wiaInfo: Map<String, Any>) {
         modifier = Modifier
             .padding(vertical = 4.dp)
             .fillMaxWidth()
-            .height(180.dp),
+            .height(200.dp),
         elevation = CardDefaults.cardElevation(4.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
