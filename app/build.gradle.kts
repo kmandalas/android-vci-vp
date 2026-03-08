@@ -20,11 +20,11 @@ val localProperties = Properties().apply {
 val appCheckDebugToken: String = localProperties.getProperty("APP_CHECK_DEBUG_TOKEN", "")
 
 android {
-    namespace = "com.example.eudiwemu"
+    namespace = "dev.kmandalas.wallet"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.eudiwemu"
+        applicationId = "dev.kmandalas.wallet"
         minSdk = 33
         targetSdk = 35
         versionCode = 1
