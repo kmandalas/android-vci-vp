@@ -23,6 +23,10 @@ Related articles:
 | **DCQL** | Parses Digital Credentials Query Language requests for selective disclosure |
 | **dc+sd-jwt** | Issues and presents credentials in HAIP-compliant format with x5c header |
 | **mso_mdoc** | Issues and presents mDoc credentials (ISO 18013-5) with COSE_Sign1 IssuerAuth and DeviceAuth |
+| 🆕 **Transaction Log** | On-device audit log of issuance, presentation, and deletion events per [ARF 2.8.0 Topic 19 (DASH)](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2312-topic-19---user-navigation-requirements-dashboard-logs-for-transparency) — attribute identifiers logged, never values (DASH_03a) |
+| 🆕 **Export / Import** | AES-256-GCM encrypted wallet backup (`.kwallet`) via Android SAF per [ARF 2.8.0 Topic 34 (Migration Objects)](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2321-topic-34---migrate-to-a-different-wallet-solution) — no raw credentials or private keys exported |
+| 🆕 **App Check** | Firebase App Check (Play Integrity API) verifies wallet genuineness on every Wallet Provider call per [ARF 2.8.0 WIAM_04](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2323-topic-40---wallet-instance-installation-and-wallet-unit-activation-and-management) |
+| 🆕 **Security Posture** | 4-level device posture framework per [ARF 2.8.0 §6.5.4.2](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/architecture-and-reference-framework-main.md#6542-wallet-unit-revocation) — freeRASP (root, hook/Frida, tamper, malware) + OS patch age, biometric enrollment, developer options |
 
 ## How to Test
 
