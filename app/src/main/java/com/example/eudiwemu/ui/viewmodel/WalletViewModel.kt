@@ -16,6 +16,7 @@ import com.example.eudiwemu.config.AppConfig
 import com.example.eudiwemu.dto.CredentialOffer
 import com.example.eudiwemu.model.IssuerSession
 import com.example.eudiwemu.security.DevicePostureService
+import com.example.eudiwemu.security.FreeRaspThreatCollector
 import com.example.eudiwemu.security.PkceManager
 import com.example.eudiwemu.security.SecurityPostureLevel
 import com.example.eudiwemu.security.getEncryptedPrefs
@@ -31,6 +32,7 @@ import com.example.eudiwemu.service.mdoc.ProximityPresentationService
 import com.example.eudiwemu.util.ClaimMetadataResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,6 +128,13 @@ class WalletViewModel(
                 loadAllCredentials()
                 checkDevicePosture(activity)
                 isInitializing = false
+
+                // Re-evaluate posture whenever freeRASP reports a new threat (async callbacks)
+                launch {
+                    FreeRaspThreatCollector.threats
+                        .drop(1)  // skip initial empty set
+                        .collect { checkDevicePosture(activity) }
+                }
 
                 // Fetch issuer metadata last (network call, only affects dropdown)
                 fetchIssuerMetadata()

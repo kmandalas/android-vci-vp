@@ -7,7 +7,6 @@ import android.os.Debug
 import android.provider.Settings
 import androidx.biometric.BiometricManager
 import com.example.eudiwemu.BuildConfig
-import com.scottyab.rootbeer.RootBeer
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -23,15 +22,37 @@ object DevicePostureService {
 
     private const val TAG = "DevicePostureService"
 
+    private val LEVEL_4_FINDINGS = setOf(
+        "Running on emulator",
+        "Debugger attached",
+        "Rooted device (freeRASP)",
+        "Running on emulator (freeRASP)",
+        "Debugger attached (freeRASP)",
+        "Frida/hook framework detected",
+        "App tampering detected"
+    )
+    private val LEVEL_3_FINDINGS = setOf(
+        "OS security patch is over 180 days old",
+        "No biometric authentication enrolled",
+        "Malware/suspicious app detected",
+        "Untrusted installation source"
+    )
+    private val LEVEL_2_FINDINGS = setOf(
+        "No screen lock configured",
+        "Developer options enabled"
+    )
+
     fun evaluate(context: Context): PostureReport {
         val findings = mutableListOf<String>()
 
-        // Level 4 (Critical) checks
+        // freeRASP threats (collected async since app start via FreeRaspThreatCollector)
+        findings.addAll(FreeRaspThreatCollector.threats.value)
+
+        // Java-layer belt-and-suspenders checks (emulator/debugger skipped in debug builds)
         if (!BuildConfig.DEBUG) {
             if (isEmulator()) findings.add("Running on emulator")
             if (isDebuggerAttached(context)) findings.add("Debugger attached")
         }
-        if (isRooted(context)) findings.add("Device is rooted")
 
         // Level 3 (High) checks
         if (isSecurityPatchOutdated()) findings.add("OS security patch is over 180 days old")
@@ -49,24 +70,6 @@ object DevicePostureService {
         }
 
         return PostureReport(level, findings)
-    }
-
-    private val LEVEL_4_FINDINGS = setOf(
-        "Running on emulator", "Debugger attached", "Device is rooted"
-    )
-    private val LEVEL_3_FINDINGS = setOf(
-        "OS security patch is over 180 days old", "No biometric authentication enrolled"
-    )
-    private val LEVEL_2_FINDINGS = setOf(
-        "No screen lock configured", "Developer options enabled"
-    )
-
-    private fun isRooted(context: Context): Boolean {
-        return try {
-            RootBeer(context).isRooted
-        } catch (_: Exception) {
-            false
-        }
     }
 
     private fun isEmulator(): Boolean {

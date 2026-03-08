@@ -45,6 +45,8 @@ android {
 //            buildConfigField("String", "WALLET_PROVIDER_URL", "\"http://${localIp}:9001/wp\"")
 
             buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"$appCheckDebugToken\"")
+            // Debug: placeholder — signing cert hash validation is disabled when isProd=false
+            buildConfigField("String", "SIGNING_CERT_HASH", "\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"")
 
             // Uses render.com backend
             buildConfigField("String", "AUTH_SERVER_HOST", "\"vc-auth-server.onrender.com\"")
@@ -62,6 +64,8 @@ android {
             buildConfigField("String", "AUTH_SERVER_TOKEN_URL", "\"https://vc-auth-server.kmandalas.com/oauth2/token\"")
             buildConfigField("String", "ISSUER_URL", "\"https://vc-issuer.kmandalas.com\"")
             buildConfigField("String", "WALLET_PROVIDER_URL", "\"https://wallet-provider.kmandalas.com/wp\"")
+            // TODO: Replace with actual release signing cert SHA-256 (base64) from ./gradlew signingReport
+            buildConfigField("String", "SIGNING_CERT_HASH", "\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\"")
         }
     }
     compileOptions {
@@ -164,6 +168,6 @@ dependencies {
     implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
 
-    // Root Detection
-    implementation(libs.rootbeer)
+    // Runtime Application Self-Protection (freeRASP)
+    implementation(libs.freerasp)
 }

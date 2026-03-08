@@ -26,7 +26,7 @@ navigationCompose = "2.4.0-alpha10"
 coil = "2.7.0"
 kotlinSerialization = "2.1.10"
 firebaseBom = "33.9.0"
-rootbeer = "0.1.0"
+freerasp = "18.0.2"
 googleServices = "4.4.2"
 
 [libraries]
@@ -99,8 +99,8 @@ firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "fir
 firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
 firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debug" }
 
-# Root Detection
-rootbeer = { module = "com.scottyab:rootbeer-lib", version.ref = "rootbeer" }
+# Runtime Application Self-Protection
+freerasp = { module = "com.aheaditec.talsec.security:TalsecSecurity-Community", version.ref = "freerasp" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

@@ -16,6 +16,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeGroupByRegex("com\\.github\\..*") }
+        }
+        // freeRASP — must be last
+        maven {
+            url = uri("https://europe-west3-maven.pkg.dev/talsec-artifact-repository/freerasp")
+            content { includeGroupByRegex("com\\.aheaditec\\..*") }
+        }
     }
 }
 
