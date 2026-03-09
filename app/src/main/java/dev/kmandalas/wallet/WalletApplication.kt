@@ -2,17 +2,21 @@ package dev.kmandalas.wallet
 
 import android.app.Application
 import android.util.Log
+import androidx.core.content.edit
 import com.aheaditec.talsec_security.security.api.SuspiciousAppInfo
 import com.aheaditec.talsec_security.security.api.Talsec
 import com.aheaditec.talsec_security.security.api.TalsecConfig
 import com.aheaditec.talsec_security.security.api.TalsecMode
 import com.aheaditec.talsec_security.security.api.ThreatListener
-import dev.kmandalas.wallet.di.appModule
-import dev.kmandalas.wallet.security.FixedDebugAppCheckProviderFactory
-import dev.kmandalas.wallet.security.FreeRaspThreatCollector
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.appcheck.ktx.appCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.ktx.app
+import dev.kmandalas.wallet.di.appModule
+import dev.kmandalas.wallet.security.FreeRaspThreatCollector
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -50,7 +54,10 @@ class WalletApplication : Application() {
         }
 
         override fun onMalwareDetected(apps: List<SuspiciousAppInfo>) {
-            Log.w(TAG, "freeRASP: malware/suspicious apps: ${apps.map { it.packageInfo.packageName }}")
+            Log.w(
+                TAG,
+                "freeRASP: malware/suspicious apps: ${apps.map { it.packageInfo.packageName }}"
+            )
             FreeRaspThreatCollector.report("Malware/suspicious app detected")
         }
 
@@ -119,12 +126,30 @@ class WalletApplication : Application() {
         try {
             FirebaseApp.initializeApp(this)
             val appCheck = FirebaseAppCheck.getInstance()
+
             if (BuildConfig.DEBUG) {
                 // Use a fixed, pre-registered debug token across all devices.
                 // Register this UUID once in Firebase Console → App Check → Apps → Manage debug tokens.
-                val fixedDebugToken = BuildConfig.APP_CHECK_DEBUG_TOKEN
-                appCheck.installAppCheckProviderFactory(FixedDebugAppCheckProviderFactory(fixedDebugToken))
+
+                val firebaseApp = Firebase.app
+                val prefs = applicationContext.getSharedPreferences(
+                    "com.google.firebase.appcheck.debug.store.${firebaseApp.persistenceKey}",
+                    MODE_PRIVATE,
+                )
+                prefs.edit {
+                    putString(
+                        "com.google.firebase.appcheck.debug.DEBUG_SECRET",
+                        BuildConfig.APP_CHECK_DEBUG_TOKEN // pre-registered debug token
+                    )
+                }
+
+                // In debug builds: use DebugAppCheckProviderFactory
+                // This allows sideloaded / locally installed APKs to pass App Check
+                Firebase.appCheck.installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
                 Log.d(TAG, "App Check initialized with fixed debug token provider")
+
             } else {
                 appCheck.installAppCheckProviderFactory(PlayIntegrityAppCheckProviderFactory.getInstance())
                 Log.d(TAG, "App Check initialized with Play Integrity provider")
