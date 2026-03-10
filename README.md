@@ -72,15 +72,9 @@ Both formats are supported end-to-end with the EU Reference Verifier.
 
 ---
 
-### 🎬 Demo Videos
+### 🎬 Demo Video
 
-📱 Watch a screen recording that walks through the entire SD-JWT flow on [YouTube](https://youtube.com/shorts/S3_SZg_Cb5s).
-
-🌐 Watch the SD-JWT interop test demo with the EU Reference Verifier on [YouTube](https://youtu.be/W2Ma6QF-G-Y).
-
-📹 Watch a screen recording that walks through the entire mDoc flow on [YouTube](https://youtu.be/GxNaKnhyoj4).
-
-📴 Watch mDoc close-proximity (QR + BLE offline) demo  demo on [YouTube](https://youtu.be/TRmPL65S8p4).
+<video src="https://github.com/kmandalas/android-vci-vp/releases/download/untagged-18f5ea7ea79f939acff0/k-wallet.mp4" controls width="720"></video>
 
 ---
 <details>
