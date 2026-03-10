@@ -74,7 +74,7 @@ Both formats are supported end-to-end with the EU Reference Verifier.
 
 ### 🎬 Demo Video
 
-<video src="https://github.com/kmandalas/android-vci-vp/releases/download/untagged-18f5ea7ea79f939acff0/k-wallet.mp4" controls width="720"></video>
+[![K-Wallet Demo](thumbnail.png)](https://github.com/kmandalas/android-vci-vp/releases/download/untagged-18f5ea7ea79f939acff0/k-wallet.mp4)
 
 ---
 <details>
