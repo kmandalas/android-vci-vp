@@ -59,7 +59,7 @@ Start the backend services from [spring-boot-vci-vp](https://github.com/kmandala
 5. If everything is OK, you will see:
    **VP Token is valid!**
 
-#### Testing with EU Reference Verifier
+#### 🇪🇺 Testing with EU Reference Verifier
 
 You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 
@@ -69,6 +69,22 @@ You can also test with the [EU Reference Verifier](https://verifier.eudiw.dev):
 4. Add your issuer's certificate as trusted issuer (copy from [issuer_cert.pem](https://github.com/kmandalas/spring-boot-vci-vp/blob/haip/issuer/src/main/resources/issuer_cert.pem))
 
 Both formats are supported end-to-end with the EU Reference Verifier.
+
+#### 📡 Testing mDoc Close-Proximity (QR + 🔵 BLE Offline)
+
+You can test mDoc offline presentation using the [multipaz-identity-reader fork](https://github.com/kmandalas/multipaz-identity-reader), which adds PDA1 doctype support.
+
+1. Clone and run the reader app on a **second Android device**:
+   ```bash
+   git clone https://github.com/kmandalas/multipaz-identity-reader
+   ```
+2. On the reader device, open the app and tap **"Scan QR"** to start a proximity session
+3. On K-Wallet, open the **PDA1 (MSO Mdoc)** credential detail screen and tap **"Present in Person"**
+4. Scan the QR code displayed by the reader with K-Wallet
+5. 🔵 BLE data transfer initiates automatically — no internet connection required
+6. Select the claims to disclose and confirm — the reader displays the verified credential attributes
+
+> **Note**: Both devices must have Bluetooth enabled. This flow works fully offline (📴 no network needed).
 
 ---
 
