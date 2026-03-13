@@ -15,7 +15,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-suspend fun showBiometricPrompt(activity: FragmentActivity): Boolean {
+suspend fun showBiometricPrompt(
+    activity: FragmentActivity,
+    title: String = "Authenticate to Access Wallet",
+    subtitle: String = "Use your fingerprint or device unlock"
+): Boolean {
     return suspendCancellableCoroutine { continuation ->
         val executor = ContextCompat.getMainExecutor(activity)
         val biometricPrompt = BiometricPrompt(
@@ -35,8 +39,8 @@ suspend fun showBiometricPrompt(activity: FragmentActivity): Boolean {
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Authenticate to Access Wallet")
-            .setSubtitle("Use your fingerprint or device unlock")
+            .setTitle(title)
+            .setSubtitle(subtitle)
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
                         BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -46,6 +50,13 @@ suspend fun showBiometricPrompt(activity: FragmentActivity): Boolean {
         biometricPrompt.authenticate(promptInfo)
     }
 }
+
+suspend fun showBiometricPromptForVp(activity: FragmentActivity): Boolean =
+    showBiometricPrompt(
+        activity = activity,
+        title = "Confirm credential sharing",
+        subtitle = "Authenticate to share your credential"
+    )
 
 suspend fun getEncryptedPrefs(context: Context, activity: FragmentActivity): SharedPreferences {
     return suspendCancellableCoroutine { continuation ->

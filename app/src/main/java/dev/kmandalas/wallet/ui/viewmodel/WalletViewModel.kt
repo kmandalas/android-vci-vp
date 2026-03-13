@@ -20,6 +20,7 @@ import dev.kmandalas.wallet.security.FreeRaspThreatCollector
 import dev.kmandalas.wallet.security.PkceManager
 import dev.kmandalas.wallet.security.SecurityPostureLevel
 import dev.kmandalas.wallet.security.getEncryptedPrefs
+import dev.kmandalas.wallet.security.showBiometricPromptForVp
 import dev.kmandalas.wallet.data.dao.TransactionLogDao
 import dev.kmandalas.wallet.data.entity.TransactionLogEntry
 import dev.kmandalas.wallet.service.ExportImportService
@@ -234,7 +235,7 @@ class WalletViewModel(
         viewModelScope.launch {
             when (uri.scheme) {
                 "myapp" -> handleOAuthDeepLink(uri, activity)
-                "openid4vp", "haip-vp" -> handleVpTokenDeepLink(uri)
+                "openid4vp", "haip-vp" -> handleVpTokenDeepLink(uri, activity)
                 "openid-credential-offer" -> handleCredentialOfferDeepLink(uri, activity)
                 else -> Log.w("WalletApp", "Unknown deep link scheme: ${uri.scheme}")
             }
@@ -325,7 +326,7 @@ class WalletViewModel(
         }
     }
 
-    private suspend fun handleVpTokenDeepLink(uri: Uri) {
+    private suspend fun handleVpTokenDeepLink(uri: Uri, activity: FragmentActivity) {
         val extractedClientId = uri.getQueryParameter("client_id")
         val extractedRequestUri = uri.getQueryParameter("request_uri")
 
@@ -370,8 +371,11 @@ class WalletViewModel(
             val targetKey = matchedCredential.credentialKey
             vpRequestState = vpRequestState.copy(targetCredentialKey = targetKey)
 
-            val bundle = withContext(Dispatchers.IO) {
-                issuanceService.getStoredCredentialBundle(targetKey)
+            val bundle = try {
+                withContext(Dispatchers.IO) { issuanceService.getStoredCredentialBundle(targetKey) }
+            } catch (e: android.security.keystore.UserNotAuthenticatedException) {
+                issuanceService.reinitializePrefs(activity)
+                withContext(Dispatchers.IO) { issuanceService.getStoredCredentialBundle(targetKey) }
             } ?: return
 
             if (dcqlFormat == AppConfig.FORMAT_MSO_MDOC) {
@@ -591,11 +595,16 @@ class WalletViewModel(
         }
     }
 
-    fun submitSdJwtVpToken(selected: List<Disclosure>) {
+    fun submitSdJwtVpToken(selected: List<Disclosure>, activity: FragmentActivity) {
         dismissSdJwtDialog()
         viewModelScope.launch {
             if (postureState.level == SecurityPostureLevel.LEVEL_4) {
                 _events.send(WalletEvent.ShowSnackbar("❌ Presentation blocked: critical security issues detected"))
+                return@launch
+            }
+            val authenticated = showBiometricPromptForVp(activity)
+            if (!authenticated) {
+                _events.send(WalletEvent.ShowSnackbar("Authentication required to share credential"))
                 return@launch
             }
             try {
@@ -635,11 +644,16 @@ class WalletViewModel(
         }
     }
 
-    fun submitMDocVpToken(selectedNames: List<String>) {
+    fun submitMDocVpToken(selectedNames: List<String>, activity: FragmentActivity) {
         dismissMDocDialog()
         viewModelScope.launch {
             if (postureState.level == SecurityPostureLevel.LEVEL_4) {
                 _events.send(WalletEvent.ShowSnackbar("❌ Presentation blocked: critical security issues detected"))
+                return@launch
+            }
+            val authenticated = showBiometricPromptForVp(activity)
+            if (!authenticated) {
+                _events.send(WalletEvent.ShowSnackbar("Authentication required to share credential"))
                 return@launch
             }
             try {

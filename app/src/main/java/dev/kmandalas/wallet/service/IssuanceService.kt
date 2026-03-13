@@ -72,6 +72,15 @@ class IssuanceService(
     }
 
     /**
+     * Re-authenticate and refresh the encrypted preferences instance.
+     * Call this when a UserNotAuthenticatedException is caught to silently re-establish
+     * the Keystore auth window without showing the wallet-access prompt.
+     */
+    suspend fun reinitializePrefs(activity: FragmentActivity) {
+        _encryptedPrefs = getEncryptedPrefs(context, activity)
+    }
+
+    /**
      * Fetches issuer metadata from /.well-known/openid-credential-issuer.
      * Returns the parsed metadata including credential configurations with claim display info.
      */

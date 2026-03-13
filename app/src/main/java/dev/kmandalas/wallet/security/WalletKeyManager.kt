@@ -70,6 +70,7 @@ class WalletKeyManager {
                     KeyGenParameterSpec.Builder(AppConfig.KEY_ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
                         .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                         .setDigests(KeyProperties.DIGEST_SHA256)
+                        // TODO (LoA High): needs setUserAuthenticationRequired(true, 0) for production
                         .setUserAuthenticationRequired(false)
                         .setIsStrongBoxBacked(true)
                         .build()
@@ -82,6 +83,7 @@ class WalletKeyManager {
                     KeyGenParameterSpec.Builder(AppConfig.KEY_ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
                         .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                         .setDigests(KeyProperties.DIGEST_SHA256)
+                        // TODO (LoA High): needs setUserAuthenticationRequired(true, 0) for production
                         .setUserAuthenticationRequired(false)
                         .build()
                 )
@@ -132,6 +134,7 @@ class WalletKeyManager {
                 KeyGenParameterSpec.Builder(AppConfig.WUA_KEY_ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
                     .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                     .setDigests(KeyProperties.DIGEST_SHA256)
+                    // TODO (LoA High): needs setUserAuthenticationRequired(true, 0) for production
                     .setUserAuthenticationRequired(false)
                     .setAttestationChallenge(attestationChallenge)
                     .setIsStrongBoxBacked(true)
@@ -145,6 +148,7 @@ class WalletKeyManager {
                 KeyGenParameterSpec.Builder(AppConfig.WUA_KEY_ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
                     .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
                     .setDigests(KeyProperties.DIGEST_SHA256)
+                    // TODO (LoA High): needs setUserAuthenticationRequired(true, 0) for production
                     .setUserAuthenticationRequired(false)
                     .setAttestationChallenge(attestationChallenge)
                     .build()

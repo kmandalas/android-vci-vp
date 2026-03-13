@@ -340,7 +340,7 @@ fun WalletScreen(
             logoUri = vpState.logoUri,
             purpose = vpState.purpose,
             onDismiss = { viewModel.dismissSdJwtDialog() },
-            onConfirm = { selected -> viewModel.submitSdJwtVpToken(selected) }
+            onConfirm = { selected -> viewModel.submitSdJwtVpToken(selected, activity) }
         )
     }
 
@@ -352,7 +352,7 @@ fun WalletScreen(
             logoUri = vpState.logoUri,
             purpose = vpState.purpose,
             onDismiss = { viewModel.dismissMDocDialog() },
-            onConfirm = { selectedNames -> viewModel.submitMDocVpToken(selectedNames) }
+            onConfirm = { selectedNames -> viewModel.submitMDocVpToken(selectedNames, activity) }
         )
     }
 
