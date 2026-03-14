@@ -28,6 +28,29 @@ Related articles:
 | 🆕 **App Check** | Firebase App Check (Play Integrity API) verifies wallet genuineness on every Wallet Provider call per [ARF 2.8.0 WIAM_04](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2323-topic-40---wallet-instance-installation-and-wallet-unit-activation-and-management) |
 | 🆕 **Security Posture** | 4-level device posture framework per [ARF 2.8.0 §6.5.4.2](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/architecture-and-reference-framework-main.md#6542-wallet-unit-revocation) — freeRASP (root, hook/Frida, tamper, malware) + OS patch age, biometric enrollment, developer options |
 
+## OID4VCI Conformance
+
+<img src="openid.png" alt="OpenID" width="160"/>
+
+K-Wallet and the [backend services](https://github.com/kmandalas/spring-boot-vci-vp) have successfully completed the [OpenID Foundation Conformance Suite](https://www.certification.openid.net/) self-assessment for **OID4VCI 1.0 Final**:
+
+| Role | Test | Result |
+|------|------|--------|
+| **Wallet** | `oid4vci-1_0-wallet-happy-path` | PASSED |
+| **Wallet** | `oid4vci-1_0-wallet-happy-path-with-scopes` | PASSED |
+| **Wallet** | `oid4vci-1_0-wallet-happy-path-with-scopes-without-authorization-details-in-token-response` | PASSED |
+| **Issuer** | `oid4vci-1_0-issuer-metadata-test` | PASSED |
+| **Issuer** | `oid4vci-1_0-issuer-happy-flow` | PASSED |
+| **Issuer** | `oid4vci-1_0-issuer-ensure-request-object-with-multiple-aud-succeeds` | PASSED |
+
+**Wallet profile** (Mar 2026): `dpop`, `client_attestation`, `wallet_initiated`, `simple`, `haip`, `unsigned`, `authorization_code`, `by_value`
+
+**Issuer profile** (Feb 2026): `client_attestation`, `dpop`, `wallet_initiated`, `simple`, `haip`, `unsigned`, `authorization_code`
+
+> **Note:** This is a self-assessment via the OpenID conformance suite — it validates protocol-level compliance (OID4VCI spec flows, token shapes, HAIP rules). It does not certify the app's production security posture (LoA High key authentication, per-use biometric gating at Keystore level, per-credential key isolation, WIA/WUA TTL compliance, etc.).
+
+---
+
 ## How to Test
 
 ### Backend Services
