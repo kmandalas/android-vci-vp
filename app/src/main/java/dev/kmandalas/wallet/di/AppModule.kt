@@ -7,6 +7,7 @@ import dev.kmandalas.wallet.data.WalletDatabase
 import dev.kmandalas.wallet.security.WalletKeyManager
 import dev.kmandalas.wallet.service.ExportImportService
 import dev.kmandalas.wallet.service.IssuanceService
+import dev.kmandalas.wallet.service.QtspService
 import dev.kmandalas.wallet.service.VpTokenService
 import dev.kmandalas.wallet.service.WiaService
 import dev.kmandalas.wallet.service.WuaService
@@ -58,6 +59,7 @@ val appModule = module {
                             url.contains(AppConfig.WALLET_PROVIDER_URL) -> "Wallet Provider"
                             url.contains(AppConfig.ISSUER_URL) -> "Credential Issuer"
                             url.contains(AppConfig.AUTH_SERVER_HOST) -> "Auth Server"
+                            url.contains(AppConfig.QTSP_URL) -> "QTSP"
                             else -> "Server"
                         }
                         throw Exception("$origin error (HTTP $status)")
@@ -95,12 +97,15 @@ val appModule = module {
     }
     single { get<WalletDatabase>().transactionLogDao() }
 
+    // QTSP service (Remote QSCD)
+    single { QtspService(get()) }
+
     // Define single instances of your services
     single { WiaService(get(), get(), androidContext()) }
-    single { IssuanceService(get(), get(), androidContext(), get()) }
-    single { VpTokenService(get(), get()) }
-    single { WuaService(get(), get(), androidContext()) }
+    single { IssuanceService(get(), get(), androidContext(), get(), get<QtspService>()) }
+    single { VpTokenService(get(), get(), get<QtspService>()) }
+    single { WuaService(get(), get(), androidContext(), get<QtspService>()) }
     single { ExportImportService(get()) }
 
-    viewModel { WalletViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { WalletViewModel(get(), get(), get(), get(), get(), get(), get(), get<QtspService>()) }
 }

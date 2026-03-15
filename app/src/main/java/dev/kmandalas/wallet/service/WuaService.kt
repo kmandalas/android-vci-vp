@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import dev.kmandalas.wallet.config.AppConfig
+import dev.kmandalas.wallet.dto.QtspCredentialInfoResponse
 import dev.kmandalas.wallet.dto.WuaCredentialRequest
 import dev.kmandalas.wallet.dto.WuaCredentialResponse
 import dev.kmandalas.wallet.dto.WuaKeyAttestation
@@ -13,6 +14,7 @@ import dev.kmandalas.wallet.dto.WuaNonceResponse
 import dev.kmandalas.wallet.dto.WuaProof
 import dev.kmandalas.wallet.dto.WuaStatusResponse
 import dev.kmandalas.wallet.security.AndroidKeystoreSigner
+import dev.kmandalas.wallet.security.RemoteQtspSigner
 import dev.kmandalas.wallet.security.WalletKeyManager
 import dev.kmandalas.wallet.security.getEncryptedPrefs
 import com.nimbusds.jose.JOSEObjectType
@@ -31,7 +33,6 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import io.ktor.http.isSuccess
 import java.util.Date
 
 /**
@@ -52,7 +53,8 @@ import java.util.Date
 class WuaService(
     private val client: HttpClient,
     private val walletKeyManager: WalletKeyManager,
-    private val context: Context
+    private val context: Context,
+    private val qtspService: QtspService? = null
 ) {
     companion object {
         private const val TAG = "WuaIssuanceService"
@@ -89,11 +91,17 @@ class WuaService(
      * Create JWT proof for WUA credential request.
      * The proof demonstrates possession of the WUA private key.
      *
+     * Supports both local Android Keystore signing and remote QTSP signing.
+     * When [qtspCredentialId] is provided and QTSP service is available,
+     * delegates signing to the remote QTSP via CSC API.
+     *
      * @param nonce The nonce from the Wallet Provider
+     * @param qtspCredentialId Optional QTSP credential ID for remote signing
      * @return Serialized JWT proof string
      */
-    fun createWuaProof(nonce: String): String {
-        Log.d(TAG, "Creating WUA JWT proof")
+    fun createWuaProof(nonce: String, qtspCredentialId: String? = null): String {
+        val isRemote = qtspCredentialId != null && qtspService != null
+        Log.d(TAG, "Creating WUA JWT proof (${if (isRemote) "QTSP remote" else "local"})")
 
         val ecKey = walletKeyManager.getWuaKey()
         val header = JWSHeader.Builder(JWSAlgorithm.ES256)
@@ -111,7 +119,11 @@ class WuaService(
             .build()
 
         val signedJWT = SignedJWT(header, claims)
-        val signer = AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)
+        val signer = if (isRemote) {
+            RemoteQtspSigner(qtspService, qtspCredentialId)
+        } else {
+            AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)
+        }
         signedJWT.sign(signer)
 
         Log.d(TAG, "WUA JWT proof created successfully")
@@ -119,7 +131,7 @@ class WuaService(
     }
 
     /**
-     * Request WUA credential from the Wallet Provider.
+     * Request WUA credential from the Wallet Provider (local key attestation mode).
      *
      * @param jwtProof The signed JWT proof
      * @param certificateChain Base64-encoded X.509 certificate chain from Android Key Attestation
@@ -130,32 +142,28 @@ class WuaService(
         certificateChain: List<String>
     ): Result<WuaCredentialResponse> {
         Log.d(TAG, "Requesting WUA credential with ${certificateChain.size} certificates in chain")
-
         val request = WuaCredentialRequest(
             proof = WuaProof(jwt = jwtProof),
             keyAttestation = WuaKeyAttestation(certificateChain = certificateChain)
         )
+        return postWuaCredential(request)
+    }
 
+    /**
+     * Shared HTTP call for WUA credential requests.
+     * Both local and QTSP modes build their request, then delegate here.
+     * Uses Ktor's configured content negotiation (.body<T>()) instead of manual JSON parsing.
+     */
+    private suspend fun postWuaCredential(request: WuaCredentialRequest): Result<WuaCredentialResponse> {
         return try {
-            val response: HttpResponse = client.post("${AppConfig.WALLET_PROVIDER_URL}/wua/credential") {
+            val response: WuaCredentialResponse = client.post("${AppConfig.WALLET_PROVIDER_URL}/wua/credential") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
-            }
-
-            if (response.status.isSuccess()) {
-                val rawBody = response.bodyAsText()
-                Log.d(TAG, "WUA raw response: $rawBody")
-                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                val wuaResponse = json.decodeFromString(WuaCredentialResponse.serializer(), rawBody)
-                Log.d(TAG, "WUA credential received. WUA ID: ${wuaResponse.wuaId}")
-                Result.success(wuaResponse)
-            } else {
-                val errorBody = response.bodyAsText()
-                Log.e(TAG, "WUA credential request failed: $errorBody")
-                Result.failure(Exception("WUA issuance failed: $errorBody"))
-            }
+            }.body()
+            Log.d(TAG, "WUA credential received. WUA ID: ${response.wuaId}")
+            Result.success(response)
         } catch (e: Exception) {
-            Log.e(TAG, "Error requesting WUA credential", e)
+            Log.e(TAG, "WUA credential request failed", e)
             Result.failure(e)
         }
     }
@@ -277,6 +285,140 @@ class WuaService(
             "iso_18045_basic" -> "software"
             else -> "unknown"
         }
+    }
+
+    /**
+     * Request WUA credential with QTSP attestation type.
+     */
+    suspend fun requestWuaCredentialWithQtsp(
+        jwtProof: String,
+        credentialInfoResponse: QtspCredentialInfoResponse
+    ): Result<WuaCredentialResponse> {
+        Log.d(TAG, "Requesting WUA credential with QTSP attestation")
+        val request = WuaCredentialRequest(
+            proof = WuaProof(jwt = jwtProof),
+            keyAttestation = WuaKeyAttestation(
+                attestationType = WuaKeyAttestation.TYPE_QTSP,
+                qtspCredentialInfo = credentialInfoResponse.toQtspCredentialInfo()
+            )
+        )
+        return postWuaCredential(request)
+    }
+
+    /**
+     * Complete WUA issuance flow using QTSP remote QSCD.
+     *
+     * Instead of generating a local key with Android Key Attestation:
+     * 1. Fetch credential info from QTSP (gets public key + cert)
+     * 2. Import QTSP public key into WalletKeyManager
+     * 3. Sign the proof JWT remotely via QTSP signHash
+     * 4. Submit with attestation_type = "qtsp_attestation" + qtsp_credential_info
+     */
+    suspend fun issueWuaWithQtsp(): Result<WuaCredentialResponse> {
+        Log.d(TAG, "🔌 Starting WUA issuance with QTSP remote QSCD")
+
+        val qtsp = qtspService ?: return Result.failure(
+            Exception("QTSP service not available")
+        )
+
+        return try {
+            // Step 1: Get nonce from wallet-provider
+            val nonceResponse = getNonce()
+            val nonce = nonceResponse.cNonce
+
+            // Step 2: List and pick the first QTSP credential
+            val credentialIds = qtsp.listCredentials()
+            if (credentialIds.isEmpty()) {
+                return Result.failure(Exception("No credentials available on QTSP"))
+            }
+            val credentialId = credentialIds.first()
+
+            // Step 3: Fetch credential info (public key, cert, SCAL)
+            val credentialInfo = qtsp.getCredentialInfo(credentialId)
+
+            // Step 4: Extract public key from QTSP certificate and import it
+            val certBase64 = credentialInfo.cert?.certificates?.firstOrNull()
+                ?: return Result.failure(Exception("QTSP credential has no certificate"))
+            val certBytes = android.util.Base64.decode(certBase64, android.util.Base64.DEFAULT)
+            val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
+            val certificate = certFactory.generateCertificate(java.io.ByteArrayInputStream(certBytes))
+                as java.security.cert.X509Certificate
+            val qtspPublicKey = certificate.publicKey as java.security.interfaces.ECPublicKey
+            walletKeyManager.importQtspPublicKey(qtspPublicKey)
+
+            // Step 5: Create JWT proof signed remotely
+            val jwtProof = createWuaProof(nonce, qtspCredentialId = credentialId)
+
+            // Step 6: Request WUA with QTSP attestation
+            val result = requestWuaCredentialWithQtsp(jwtProof, credentialInfo)
+
+            if (result.isSuccess) {
+                val wuaResponse = result.getOrNull()!!
+
+                // Step 7: Verify WUA signature
+                val isValid = verifyWuaCredential(wuaResponse.credential)
+                if (!isValid) {
+                    walletKeyManager.clearQtspMode()
+                    return Result.failure(Exception("WUA (QTSP) signature verification failed"))
+                }
+
+                // Step 8: Store WUA + QTSP state for later signing & restart restoration
+                storeWua(wuaResponse)
+                storeQtspState(credentialId, qtspPublicKey)
+
+                Log.d(TAG, "🔌 WUA issuance with QTSP completed successfully")
+            }
+
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "WUA (QTSP) issuance failed", e)
+            walletKeyManager.clearQtspMode()
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Persisted QTSP state: credential ID + public key stored atomically as one JSON object.
+     */
+    private fun storeQtspState(credentialId: String, publicKey: java.security.interfaces.ECPublicKey) {
+        val jwk = com.nimbusds.jose.jwk.ECKey.Builder(
+            com.nimbusds.jose.jwk.Curve.P_256, publicKey
+        ).build()
+        val json = org.json.JSONObject().apply {
+            put("credentialId", credentialId)
+            put("publicKeyJwk", org.json.JSONObject(jwk.toJSONString()))
+        }
+        encryptedPrefs.edit {
+            putString("qtsp_state", json.toString())
+        }
+        Log.d(TAG, "🔌 QTSP state stored (credentialId=$credentialId)")
+    }
+
+    /**
+     * Restored QTSP state from encrypted storage.
+     */
+    data class QtspState(val credentialId: String, val publicKey: java.security.interfaces.ECPublicKey)
+
+    fun getStoredQtspState(): QtspState? {
+        if (_encryptedPrefs == null) return null
+        val jsonStr = encryptedPrefs.getString("qtsp_state", null) ?: return null
+        return try {
+            val json = org.json.JSONObject(jsonStr)
+            val credentialId = json.getString("credentialId")
+            val ecKey = com.nimbusds.jose.jwk.ECKey.parse(json.getJSONObject("publicKeyJwk").toString())
+            QtspState(credentialId, ecKey.toECPublicKey())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore QTSP state", e)
+            null
+        }
+    }
+
+    fun getQtspCredentialId(): String? = getStoredQtspState()?.credentialId
+
+    fun clearQtspState() {
+        if (_encryptedPrefs == null) return
+        encryptedPrefs.edit { remove("qtsp_state") }
+        Log.d(TAG, "🔌 QTSP state cleared")
     }
 
     /**

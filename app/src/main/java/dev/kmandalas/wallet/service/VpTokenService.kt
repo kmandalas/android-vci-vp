@@ -26,7 +26,6 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayInputStream
@@ -38,14 +37,22 @@ import java.util.Base64
 
 class VpTokenService(
     private val client: HttpClient,
-    walletKeyManager: WalletKeyManager
+    private val walletKeyManager: WalletKeyManager,
+    private val qtspService: QtspService? = null
 ) {
     companion object {
         private const val TAG = "VpTokenService"
     }
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val sdJwtVpService = SdJwtVpService(walletKeyManager)
+    private val sdJwtVpService = SdJwtVpService(
+        walletKeyManager,
+        qtspService,
+        qtspCredentialIdProvider = { qtspCredentialId }
+    )
+
+    // QTSP credential ID — set externally before VP operations when in QTSP mode
+    var qtspCredentialId: String? = null
 
     /**
      * Fetches and verifies the signed Authorization Request (JAR) from the request URI.
@@ -214,10 +221,16 @@ class VpTokenService(
             responseUri = responseUri
         )
 
+        // Pass QTSP service through when in QTSP mode
+        val effectiveQtspService = if (walletKeyManager.isQtspMode) qtspService else null
+        val effectiveCredentialId = if (walletKeyManager.isQtspMode) qtspCredentialId else null
+
         val vpToken = DeviceResponseBuilder.build(
             credential = credential,
             selectedClaims = selectedClaims,
-            sessionTranscript = sessionTranscript
+            sessionTranscript = sessionTranscript,
+            qtspService = effectiveQtspService,
+            qtspCredentialId = effectiveCredentialId
         )
 
         Log.d(TAG, "mDoc VP token created successfully")

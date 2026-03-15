@@ -25,6 +25,10 @@ class AppConfig {
         const val ISSUER_URL: String = BuildConfig.ISSUER_URL
         const val WALLET_PROVIDER_URL: String = BuildConfig.WALLET_PROVIDER_URL
 
+        // QTSP (Remote QSCD) configuration
+        const val QTSP_URL: String = BuildConfig.QTSP_URL
+        const val QTSP_API_KEY: String = BuildConfig.QTSP_API_KEY
+
         // WIA (Wallet Instance Attestation) endpoints and configuration
         val WALLET_PROVIDER_WIA_NONCE_URL = "$WALLET_PROVIDER_URL/wia/nonce"
         val WALLET_PROVIDER_WIA_CREDENTIAL_URL = "$WALLET_PROVIDER_URL/wia/credential"

@@ -29,6 +29,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -57,6 +59,7 @@ import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavController
 import dev.kmandalas.wallet.QrScannerActivity
+import dev.kmandalas.wallet.BuildConfig
 import dev.kmandalas.wallet.config.AppConfig
 import dev.kmandalas.wallet.security.SecurityPostureLevel
 import dev.kmandalas.wallet.ui.viewmodel.WalletEvent
@@ -172,6 +175,68 @@ fun WalletScreen(
                     postureState = viewModel.postureState
                 )
 
+                // Remote QSCD (QTSP) toggle
+                var showQscdWarning by remember { mutableStateOf(false) }
+                var pendingQscdToggle by remember { mutableStateOf(false) }
+
+                if (showQscdWarning) {
+                    AlertDialog(
+                        onDismissRequest = { showQscdWarning = false },
+                        title = { Text("Switch WSCD mode?") },
+                        text = { Text("Your existing credentials are bound to the current signing key. You will need to re-issue them after switching.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showQscdWarning = false
+                                viewModel.toggleRemoteQscd(pendingQscdToggle)
+                            }) { Text("Switch") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showQscdWarning = false }) { Text("Cancel") }
+                        }
+                    )
+                }
+
+                val remoteQscdEnabled = BuildConfig.REMOTE_QSCD_ENABLED
+                val disabledAlpha = if (remoteQscdEnabled) 1f else 0.38f
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Remote QSCD (QTSP)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = disabledAlpha)
+                        )
+                        if (remoteQscdEnabled) {
+                            attestationState.qtspStatus?.let { status ->
+                                Text(
+                                    text = status,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (status.startsWith("Error"))
+                                        MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                    Switch(
+                        checked = attestationState.useRemoteQscd,
+                        enabled = remoteQscdEnabled,
+                        onCheckedChange = { checked ->
+                            if (viewModel.credentialList.isNotEmpty()) {
+                                pendingQscdToggle = checked
+                                showQscdWarning = true
+                            } else {
+                                viewModel.toggleRemoteQscd(checked)
+                            }
+                        }
+                    )
+                }
+
                 // Inline posture warning for Level 2-3
                 val posture = viewModel.postureState
                 if (posture.level != null &&
@@ -281,30 +346,30 @@ fun WalletScreen(
                 }
 
                 // Credential card list
-                if (credentialList.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "My Credentials",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = { navController.navigate("transaction_log") },
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Text(
-                            text = "My Credentials",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = "Transaction Log",
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        IconButton(
-                            onClick = { navController.navigate("transaction_log") },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.History,
-                                contentDescription = "Transaction Log",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
                     }
+                }
+                if (credentialList.isNotEmpty()) {
                     credentialList.forEach { cred ->
                         cred.claims?.let { claims ->
                             CredentialCard(

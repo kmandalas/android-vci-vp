@@ -21,7 +21,9 @@ data class CredentialUiState(
 
 data class AttestationState(
     val wuaInfo: Map<String, Any>? = null,
-    val wiaInfo: Map<String, Any>? = null
+    val wiaInfo: Map<String, Any>? = null,
+    val useRemoteQscd: Boolean = false,
+    val qtspStatus: String? = null
 )
 
 data class IssuanceUiState(

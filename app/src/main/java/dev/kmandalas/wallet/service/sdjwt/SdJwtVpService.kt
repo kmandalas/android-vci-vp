@@ -8,7 +8,9 @@ import dev.kmandalas.wallet.dto.AuthorizationRequestResponse
 import dev.kmandalas.wallet.dto.ClaimMetadata
 import dev.kmandalas.wallet.util.ClaimMetadataResolver
 import dev.kmandalas.wallet.security.AndroidKeystoreSigner
+import dev.kmandalas.wallet.security.RemoteQtspSigner
 import dev.kmandalas.wallet.security.WalletKeyManager
+import dev.kmandalas.wallet.service.QtspService
 import com.nimbusds.jose.JOSEException
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -18,7 +20,11 @@ import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import java.text.ParseException
 
-class SdJwtVpService(private val walletKeyManager: WalletKeyManager) {
+class SdJwtVpService(
+    private val walletKeyManager: WalletKeyManager,
+    private val qtspService: QtspService? = null,
+    private val qtspCredentialIdProvider: (() -> String?)? = null
+) {
 
     companion object {
         private const val TAG = "SdJwtVpService"
@@ -157,7 +163,16 @@ class SdJwtVpService(private val walletKeyManager: WalletKeyManager) {
         val header = createBindingJwtHeader(signingKey)
         val payload = createBindingJwtPayload(vc, disclosures, audience, nonce)
         val jwt = SignedJWT(header, JWTClaimsSet.parse(payload))
-        val signer = AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)
+
+        // QTSP mode: sign remotely, otherwise use local Android Keystore
+        val signer = if (walletKeyManager.isQtspMode && qtspService != null) {
+            val credentialId = qtspCredentialIdProvider?.invoke()
+                ?: throw IllegalStateException("QTSP mode active but no credential ID")
+            Log.d(TAG, "🔌 Using QTSP remote signer for KB-JWT")
+            RemoteQtspSigner(qtspService, credentialId)
+        } else {
+            AndroidKeystoreSigner(AppConfig.WUA_KEY_ALIAS)
+        }
         jwt.sign(signer)
         return jwt
     }

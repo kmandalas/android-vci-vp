@@ -22,6 +22,8 @@ import com.authlete.mdoc.DeviceNameSpacesBytes
 import com.authlete.mdoc.DeviceSigned
 import com.nimbusds.jose.crypto.impl.ECDSA
 import dev.kmandalas.wallet.config.AppConfig
+import dev.kmandalas.wallet.service.QtspService
+import kotlinx.coroutines.runBlocking
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.Signature
@@ -44,13 +46,17 @@ object DeviceResponseBuilder {
      * @param selectedClaims     List of elementIdentifier names to include
      * @param sessionTranscript  CBOR-encoded SessionTranscript bytes
      * @param keyAlias           Android Keystore alias for signing
+     * @param qtspService        Optional QTSP service for remote signing
+     * @param qtspCredentialId   Optional QTSP credential ID (required when qtspService is set)
      * @return Raw DeviceResponse CBOR bytes
      */
     fun buildBytes(
         credential: String,
         selectedClaims: List<String>,
         sessionTranscript: ByteArray,
-        keyAlias: String = AppConfig.WUA_KEY_ALIAS
+        keyAlias: String = AppConfig.WUA_KEY_ALIAS,
+        qtspService: QtspService? = null,
+        qtspCredentialId: String? = null
     ): ByteArray {
         // Step 1: Decode stored IssuerSigned CBOR
         val issuerSignedBytes = Base64.decode(credential, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
@@ -74,7 +80,7 @@ object DeviceResponseBuilder {
 
         // Step 5: Build DeviceAuthentication and sign it
         val deviceSignature = buildDeviceSignature(
-            sessionTranscript, deviceNameSpacesBytes, keyAlias
+            sessionTranscript, deviceNameSpacesBytes, keyAlias, qtspService, qtspCredentialId
         )
 
         // Step 6: Assemble DeviceSigned using Authlete's typed classes
@@ -112,15 +118,19 @@ object DeviceResponseBuilder {
      * @param selectedClaims     List of elementIdentifier names to include
      * @param sessionTranscript  CBOR-encoded SessionTranscript bytes
      * @param keyAlias           Android Keystore alias for signing
+     * @param qtspService        Optional QTSP service for remote signing
+     * @param qtspCredentialId   Optional QTSP credential ID
      * @return Base64url-encoded DeviceResponse CBOR
      */
     fun build(
         credential: String,
         selectedClaims: List<String>,
         sessionTranscript: ByteArray,
-        keyAlias: String = AppConfig.WUA_KEY_ALIAS
+        keyAlias: String = AppConfig.WUA_KEY_ALIAS,
+        qtspService: QtspService? = null,
+        qtspCredentialId: String? = null
     ): String {
-        val responseBytes = buildBytes(credential, selectedClaims, sessionTranscript, keyAlias)
+        val responseBytes = buildBytes(credential, selectedClaims, sessionTranscript, keyAlias, qtspService, qtspCredentialId)
         return Base64.encodeToString(responseBytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }
 
@@ -191,11 +201,15 @@ object DeviceResponseBuilder {
      *
      * Uses Authlete's COSE API (SigStructureBuilder, COSESign1) for structured construction.
      * COSE_Sign1 uses detached payload (null in structure).
+     *
+     * Supports both local Android Keystore signing and remote QTSP signing.
      */
     private fun buildDeviceSignature(
         sessionTranscript: ByteArray,
         deviceNameSpacesBytes: DeviceNameSpacesBytes,
-        keyAlias: String
+        keyAlias: String,
+        qtspService: QtspService? = null,
+        qtspCredentialId: String? = null
     ): COSESign1 {
         // Step 1: Parse SessionTranscript back to CBOR item
         val stDecoder = CBORDecoder(sessionTranscript)
@@ -228,16 +242,14 @@ object DeviceResponseBuilder {
             .payload(deviceAuthenticationBytes)
             .build()
 
-        // Step 5: Sign with Android Keystore (opaque keys require java.security.Signature)
         val sigStructureBytes = sigStructure.encode()
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val privateKey = keyStore.getKey(keyAlias, null) as PrivateKey
-        val derSignature = Signature.getInstance("SHA256withECDSA").run {
-            initSign(privateKey)
-            update(sigStructureBytes)
-            sign()
+
+        // Step 5: Sign — either via QTSP remote signing or local Android Keystore
+        val signatureBytes = if (qtspService != null && qtspCredentialId != null) {
+            signWithQtsp(sigStructureBytes, qtspService, qtspCredentialId)
+        } else {
+            signWithKeystore(sigStructureBytes, keyAlias)
         }
-        val signatureBytes = ECDSA.transcodeSignatureToConcat(derSignature, 64)
 
         Log.d(TAG, "DeviceAuth signature created (${signatureBytes.size} bytes)")
 
@@ -248,5 +260,34 @@ object DeviceResponseBuilder {
             CBORNull.INSTANCE,
             CBORByteArray(signatureBytes)
         )
+    }
+
+    /**
+     * Sign Sig_structure1 bytes using the local Android Keystore.
+     */
+    private fun signWithKeystore(sigStructureBytes: ByteArray, keyAlias: String): ByteArray {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val privateKey = keyStore.getKey(keyAlias, null) as PrivateKey
+        val derSignature = Signature.getInstance("SHA256withECDSA").run {
+            initSign(privateKey)
+            update(sigStructureBytes)
+            sign()
+        }
+        return ECDSA.transcodeSignatureToConcat(derSignature, 64)
+    }
+
+    /**
+     * Sign Sig_structure1 bytes using the remote QTSP via CSC signHash API.
+     * Delegates to [QtspService.signRaw] for the hash→authorize→signHash→DER-to-JOSE pipeline.
+     */
+    private fun signWithQtsp(
+        sigStructureBytes: ByteArray,
+        qtspService: QtspService,
+        credentialId: String
+    ): ByteArray {
+        Log.d(TAG, "🔌 Signing DeviceAuth with QTSP remote signer")
+        return runBlocking {
+            qtspService.signRaw(credentialId, sigStructureBytes)
+        }
     }
 }

@@ -12,6 +12,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.authlete.sd.Disclosure
+import dev.kmandalas.wallet.BuildConfig
 import dev.kmandalas.wallet.config.AppConfig
 import dev.kmandalas.wallet.dto.CredentialOffer
 import dev.kmandalas.wallet.model.IssuerSession
@@ -25,9 +26,11 @@ import dev.kmandalas.wallet.data.dao.TransactionLogDao
 import dev.kmandalas.wallet.data.entity.TransactionLogEntry
 import dev.kmandalas.wallet.service.ExportImportService
 import dev.kmandalas.wallet.service.IssuanceService
+import dev.kmandalas.wallet.service.QtspService
 import dev.kmandalas.wallet.service.VpTokenService
 import dev.kmandalas.wallet.service.WiaService
 import dev.kmandalas.wallet.service.WuaService
+import dev.kmandalas.wallet.security.WalletKeyManager
 import dev.kmandalas.wallet.service.mdoc.DeviceResponseBuilder
 import dev.kmandalas.wallet.service.mdoc.ProximityPresentationService
 import dev.kmandalas.wallet.util.ClaimMetadataResolver
@@ -46,7 +49,9 @@ class WalletViewModel(
     private val wuaService: WuaService,
     private val wiaService: WiaService,
     private val transactionLogDao: TransactionLogDao,
-    private val exportImportService: ExportImportService
+    private val exportImportService: ExportImportService,
+    private val walletKeyManager: WalletKeyManager,
+    private val qtspService: QtspService? = null
 ) : ViewModel() {
 
     var credentialList by mutableStateOf<List<CredentialUiState>>(emptyList())
@@ -83,6 +88,82 @@ class WalletViewModel(
 
     fun showBanner(message: String) { bannerMessage = message }
     fun clearBanner() { bannerMessage = null }
+
+    /**
+     * Toggle Remote QSCD (QTSP) mode.
+     * When enabled, triggers WUA re-issuance with QTSP remote signing.
+     * When disabled, clears QTSP mode and re-issues WUA with local keys.
+     */
+    fun toggleRemoteQscd(enabled: Boolean) {
+        attestationState = attestationState.copy(useRemoteQscd = enabled)
+        if (!enabled) {
+            walletKeyManager.clearQtspMode()
+            wuaService.clearQtspState()
+            attestationState = attestationState.copy(qtspStatus = null)
+            // Re-issue WUA with local keys
+            reissueWua(useQtsp = false)
+        } else {
+            // Issue WUA with QTSP
+            reissueWua(useQtsp = true)
+        }
+    }
+
+    /**
+     * Re-issue WUA (either local or QTSP mode).
+     */
+    private fun reissueWua(useQtsp: Boolean) {
+        viewModelScope.launch {
+            try {
+                attestationState = attestationState.copy(
+                    qtspStatus = if (useQtsp) "Connecting to QTSP..." else null
+                )
+
+                val result = withContext(Dispatchers.IO) {
+                    if (useQtsp) {
+                        wuaService.issueWuaWithQtsp()
+                    } else {
+                        wuaService.issueWua()
+                    }
+                }
+
+                if (result.isSuccess) {
+                    val wuaResponse = result.getOrNull()!!
+                    val decoded = wuaService.decodeWuaCredential(wuaResponse.credential)
+                    attestationState = attestationState.copy(
+                        wuaInfo = decoded,
+                        qtspStatus = if (useQtsp) "Connected" else null
+                    )
+
+                    // Update QTSP credential ID in services for VP signing and credential issuance
+                    if (useQtsp) {
+                        val credId = wuaService.getQtspCredentialId()
+                        vpTokenService.qtspCredentialId = credId
+                        issuanceService.qtspCredentialId = credId
+                    } else {
+                        vpTokenService.qtspCredentialId = null
+                        issuanceService.qtspCredentialId = null
+                    }
+
+                    val mode = if (useQtsp) "QTSP remote" else "local"
+                    _events.send(WalletEvent.ShowSnackbar("✅ Wallet re-activated with $mode QSCD"))
+                } else {
+                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                    attestationState = attestationState.copy(
+                        useRemoteQscd = if (useQtsp) false else attestationState.useRemoteQscd,
+                        qtspStatus = if (useQtsp) "Error: $error" else null
+                    )
+                    _events.send(WalletEvent.ShowSnackbar("❌ WUA re-issuance failed: $error"))
+                }
+            } catch (e: Exception) {
+                Log.e("WalletApp", "Error re-issuing WUA", e)
+                attestationState = attestationState.copy(
+                    useRemoteQscd = if (useQtsp) false else attestationState.useRemoteQscd,
+                    qtspStatus = if (useQtsp) "Error: ${e.message}" else null
+                )
+                _events.send(WalletEvent.ShowSnackbar("❌ Error: ${e.message}"))
+            }
+        }
+    }
 
     private var proximityService: ProximityPresentationService? = null
 
@@ -127,6 +208,9 @@ class WalletViewModel(
                 // Load local data first (no network needed)
                 loadStoredAttestations()
                 loadAllCredentials()
+
+                // Restore QTSP mode from stored WUA + public key
+                restoreQtspState()
                 checkDevicePosture(activity)
                 isInitializing = false
 
@@ -166,6 +250,29 @@ class WalletViewModel(
                 Log.e("WalletApp", "Error decoding stored WIA", e)
             }
         }
+    }
+
+    /**
+     * Restore QTSP remote QSCD state from stored WUA and persisted public key.
+     * If the stored WUA has wscd_type=REMOTE and we have a stored QTSP public key,
+     * re-import the key and restore the toggle state — no network call needed.
+     */
+    private fun restoreQtspState() {
+        if (!BuildConfig.REMOTE_QSCD_ENABLED) return
+        val wuaInfo = attestationState.wuaInfo ?: return
+        val wscdType = wuaInfo["wscd_type"]?.toString()
+        if (wscdType != "remote_qscd" && wscdType != "REMOTE" && wscdType != "remote") return
+
+        val qtspState = wuaService.getStoredQtspState() ?: run {
+            Log.w("WalletApp", "🔌 Remote WUA found but no stored QTSP state — toggle stays off")
+            return
+        }
+
+        walletKeyManager.importQtspPublicKey(qtspState.publicKey)
+        vpTokenService.qtspCredentialId = qtspState.credentialId
+        issuanceService.qtspCredentialId = qtspState.credentialId
+        attestationState = attestationState.copy(useRemoteQscd = true, qtspStatus = "Connected")
+        Log.d("WalletApp", "🔌 QTSP mode restored from stored state (credentialId=${qtspState.credentialId})")
     }
 
     private suspend fun checkDevicePosture(activity: FragmentActivity) {
@@ -215,7 +322,7 @@ class WalletViewModel(
                 CredentialUiState(
                     credentialKey = credentialKey,
                     credentialFormat = bundle.format,
-                    vct = claims?.get("vct") as? String,
+                    vct = claims["vct"] as? String,
                     claims = claims,
                     claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
                     credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name,
@@ -762,11 +869,16 @@ class WalletViewModel(
                 val sessionTranscript = proximityService?.sessionTranscript
                     ?: throw IllegalStateException("Session transcript not available")
 
+                val effectiveQtspService = if (walletKeyManager.isQtspMode) qtspService else null
+                val effectiveCredentialId = if (walletKeyManager.isQtspMode) vpTokenService.qtspCredentialId else null
+
                 val responseBytes = withContext(Dispatchers.Default) {
                     DeviceResponseBuilder.buildBytes(
                         credential = storedCredential,
                         selectedClaims = selectedClaims,
-                        sessionTranscript = sessionTranscript
+                        sessionTranscript = sessionTranscript,
+                        qtspService = effectiveQtspService,
+                        qtspCredentialId = effectiveCredentialId
                     )
                 }
 
@@ -1000,7 +1112,7 @@ class WalletViewModel(
             val newState = CredentialUiState(
                 credentialKey = credentialKey,
                 credentialFormat = bundle.format,
-                vct = claims?.get("vct") as? String,
+                vct = claims["vct"] as? String,
                 claims = claims,
                 claimResolver = ClaimMetadataResolver.fromNullable(bundle.claimsMetadata),
                 credentialDisplayName = bundle.displayMetadata?.firstOrNull()?.name

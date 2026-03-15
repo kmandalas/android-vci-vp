@@ -27,6 +27,7 @@ Related articles:
 | 🆕 **Export / Import** | AES-256-GCM encrypted wallet backup (`.kwallet`) via Android SAF per [ARF 2.8.0 Topic 34 (Migration Objects)](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2321-topic-34---migrate-to-a-different-wallet-solution) — no raw credentials or private keys exported |
 | 🆕 **App Check** | Firebase App Check (Play Integrity API) verifies wallet genuineness on every Wallet Provider call per [ARF 2.8.0 WIAM_04](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2323-topic-40---wallet-instance-installation-and-wallet-unit-activation-and-management) |
 | 🆕 **Security Posture** | 4-level device posture framework per [ARF 2.8.0 §6.5.4.2](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/architecture-and-reference-framework-main.md#6542-wallet-unit-revocation) — freeRASP (root, hook/Frida, tamper, malware) + OS patch age, biometric enrollment, developer options |
+| 🆕 **Remote WSCD** | Toggle between local (Android Keystore) and remote (QTSP) signing via CSC API v2 — wallet-provider issues WUA with `wscd_type: "remote_qscd"` for QTSP-managed keys |
 
 ## OID4VCI Conformance
 
@@ -55,7 +56,7 @@ K-Wallet and the [backend services](https://github.com/kmandalas/spring-boot-vci
 
 ### Backend Services
 
-Start the backend services from [spring-boot-vci-vp](https://github.com/kmandalas/spring-boot-vci-vp): auth-server (port 9000), issuer (port 8080), verifier (port 9002), and wallet-provider (port 9001).
+Start the backend services from [spring-boot-vci-vp](https://github.com/kmandalas/spring-boot-vci-vp): wallet-provider (port 9001), auth-server (port 9000), issuer (port 8080), verifier (port 9002), and optionally qtsp-mock (port 9003) for remote WSCD and trust-validator (port 8090) for X.509 chain validation.
 
 ### Credential Issuance (VCI)
 
@@ -135,7 +136,7 @@ If you need a production-ready solution, I can deliver a complete, end-to-end EU
 #### Full-stack engagements
 
 - **HSM integration** — Hardware Security Module support for issuer and wallet-provider signing keys (LoA High compliance)
-- **Remote WSCA** — Remote Wallet Secure Cryptographic Application for hardware-backed key management without device dependency
+- **Remote WSCA** — Production-grade Remote Wallet Secure Cryptographic Application with certified QTSP HSM integration (the included qtsp-mock demonstrates the CSC API v2 flow end-to-end)
 - **Production-grade storage** — Replace H2 with a production database of your choice (PostgreSQL, MySQL, CosmosDB, etc.); credential status, WUA, and session data on a robust, scalable store
 - **Key Vault integration** — AWS KMS, Azure Key Vault, or HashiCorp Vault for secret/key lifecycle management
 - **Full microservices setup** — Containerised (Docker/Kubernetes), horizontally scalable, with distributed caching (e.g. Redis) for JTI replay protection, session management etc.

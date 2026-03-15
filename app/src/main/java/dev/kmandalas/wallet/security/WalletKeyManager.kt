@@ -54,6 +54,33 @@ class WalletKeyManager {
         private const val TAG = "WalletKeyManager"
     }
 
+    // QTSP mode: holds the remote public key (not in Android Keystore)
+    private var qtspPublicKey: ECKey? = null
+    var isQtspMode: Boolean = false
+        private set
+
+    /**
+     * Import QTSP-managed public key for remote QSCD mode.
+     * When set, getWuaKey() returns this key instead of the Android Keystore WUA key.
+     */
+    fun importQtspPublicKey(publicKey: ECPublicKey) {
+        qtspPublicKey = ECKey.Builder(Curve.P_256, publicKey)
+            .keyID("qtsp-key")
+            .algorithm(JWSAlgorithm.ES256)
+            .build()
+        isQtspMode = true
+        Log.d(TAG, "🔌 QTSP public key imported")
+    }
+
+    /**
+     * Clear QTSP mode — revert to local Android Keystore keys.
+     */
+    fun clearQtspMode() {
+        qtspPublicKey = null
+        isQtspMode = false
+        Log.d(TAG, "🔌 QTSP mode cleared, using local keys")
+    }
+
     init {
         generateKeyPairIfNeeded()
     }
@@ -169,9 +196,13 @@ class WalletKeyManager {
     }
 
     /**
-     * Retrieve the WUA public key as ECKey (JWK format)
+     * Retrieve the WUA public key as ECKey (JWK format).
+     * Returns the QTSP-managed key when in QTSP mode, otherwise the Android Keystore WUA key.
      */
     fun getWuaKey(): ECKey {
+        // QTSP mode: return the remotely-managed public key
+        qtspPublicKey?.let { return it }
+
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         val entry = keyStore.getEntry(AppConfig.WUA_KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
         val publicKey = entry.certificate.publicKey as ECPublicKey

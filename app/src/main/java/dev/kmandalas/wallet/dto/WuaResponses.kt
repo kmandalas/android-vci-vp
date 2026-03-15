@@ -24,13 +24,23 @@ data class WuaProof(
 )
 
 /**
- * Android Key Attestation data for WUA credential request
+ * Key attestation data for WUA credential request.
+ * Supports both Android Key Attestation and QTSP attestation types.
+ *
+ * For android_key_attestation: certificateChain is required
+ * For qtsp_attestation: qtspCredentialInfo is required (certificateChain is empty)
  */
 @Serializable
 data class WuaKeyAttestation(
     @SerialName("attestation_type") val attestationType: String = "android_key_attestation",
-    @SerialName("certificate_chain") val certificateChain: List<String>
-)
+    @SerialName("certificate_chain") val certificateChain: List<String> = emptyList(),
+    @SerialName("qtsp_credential_info") val qtspCredentialInfo: QtspCredentialInfoForWua? = null
+) {
+    companion object {
+        const val TYPE_ANDROID = "android_key_attestation"
+        const val TYPE_QTSP = "qtsp_attestation"
+    }
+}
 
 // ==================== Response DTOs ====================
 

@@ -17,6 +17,7 @@ import dev.kmandalas.wallet.dto.StoredCredential
 import dev.kmandalas.wallet.model.IssuerSession
 import dev.kmandalas.wallet.security.AndroidKeystoreSigner
 import dev.kmandalas.wallet.security.DPoPManager
+import dev.kmandalas.wallet.security.RemoteQtspSigner
 import dev.kmandalas.wallet.security.WalletKeyManager
 import dev.kmandalas.wallet.security.getEncryptedPrefs
 import dev.kmandalas.wallet.service.mdoc.MDocCredentialService
@@ -46,7 +47,8 @@ class IssuanceService(
     private val client: HttpClient,
     private val wiaService: WiaService? = null,
     private val context: Context,
-    private val walletKeyManager: WalletKeyManager
+    private val walletKeyManager: WalletKeyManager,
+    private val qtspService: QtspService? = null
 ) {
     companion object {
         private const val TAG = "IssuanceService"
@@ -55,6 +57,9 @@ class IssuanceService(
     private val json = Json { ignoreUnknownKeys = true }
     private val dpopManager = DPoPManager(walletKeyManager)
     private val sdJwtCredentialService = SdJwtCredentialService(client)
+
+    /** QTSP credential ID — set by ViewModel when QTSP mode is toggled/restored. */
+    var qtspCredentialId: String? = null
 
     // Encrypted SharedPreferences - lazily initialized when activity context is available
     private var _encryptedPrefs: SharedPreferences? = null
@@ -422,8 +427,17 @@ class IssuanceService(
             .build()
 
         val signedJWT = SignedJWT(header, claims)
-        val keyAlias = if (wuaJwt != null) AppConfig.WUA_KEY_ALIAS else AppConfig.KEY_ALIAS
-        val signer = AndroidKeystoreSigner(keyAlias)
+
+        // Choose signer: QTSP remote signer when in QTSP mode with WUA, otherwise local Keystore
+        val signer = if (wuaJwt != null && walletKeyManager.isQtspMode && qtspService != null) {
+            val credentialId = qtspCredentialId
+                ?: throw IllegalStateException("QTSP mode active but no credential ID available")
+            Log.d(TAG, "🔌 Using QTSP remote signer for credential proof")
+            RemoteQtspSigner(qtspService, credentialId)
+        } else {
+            val keyAlias = if (wuaJwt != null) AppConfig.WUA_KEY_ALIAS else AppConfig.KEY_ALIAS
+            AndroidKeystoreSigner(keyAlias)
+        }
         signedJWT.sign(signer)
 
         return signedJWT.serialize()
