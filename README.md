@@ -27,7 +27,7 @@ Related articles:
 | 🆕 **Export / Import** | AES-256-GCM encrypted wallet backup (`.kwallet`) via Android SAF per [ARF 2.8.0 Topic 34 (Migration Objects)](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2321-topic-34---migrate-to-a-different-wallet-solution) — no raw credentials or private keys exported |
 | 🆕 **App Check** | Firebase App Check (Play Integrity API) verifies wallet genuineness on every Wallet Provider call per [ARF 2.8.0 WIAM_04](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/annexes/annex-2/annex-2.02-high-level-requirements-by-topic.md#a2323-topic-40---wallet-instance-installation-and-wallet-unit-activation-and-management) |
 | 🆕 **Security Posture** | 4-level device posture framework per [ARF 2.8.0 §6.5.4.2](https://github.com/eu-digital-identity-wallet/eudi-doc-architecture-and-reference-framework/blob/main/docs/architecture-and-reference-framework-main.md#6542-wallet-unit-revocation) — freeRASP (root, hook/Frida, tamper, malware) + OS patch age, biometric enrollment, developer options |
-| 🆕 **Remote WSCD** | Toggle between local (Android Keystore) and remote (QTSP) signing via CSC API v2 — wallet-provider issues WUA with `wscd_type: "remote_qscd"` for QTSP-managed keys |
+| ⭐ **Remote WSCD** | Toggle between local (Android Keystore) and remote (QTSP) signing via CSC API v2 — wallet-provider issues WUA with `wscd_type: "remote_qscd"` for QTSP-managed keys |
 
 ## OID4VCI Conformance
 
