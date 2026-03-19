@@ -97,8 +97,8 @@ val appModule = module {
     }
     single { get<WalletDatabase>().transactionLogDao() }
 
-    // QTSP service (Remote QSCD)
-    single { QtspService(get()) }
+    // QTSP service (Remote QSCD) — needs WalletKeyManager for per-device userID
+    single { QtspService(get(), get()) }
 
     // Define single instances of your services
     single { WiaService(get(), get(), androidContext()) }

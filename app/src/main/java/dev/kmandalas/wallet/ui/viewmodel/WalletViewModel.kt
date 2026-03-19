@@ -464,6 +464,12 @@ class WalletViewModel(
             val requestedVcts = requestObject.dcql_query.credentials.firstOrNull()?.meta?.vct_values
             Log.d("WalletApp", "VP DCQL requested format: $dcqlFormat, vct_values: $requestedVcts")
 
+            // Ensure credentials are loaded (may be empty after process restart)
+            if (credentialList.isEmpty()) {
+                Log.d("WalletApp", "🔄 Credential list empty during VP flow, reloading...")
+                loadAllCredentials()
+            }
+
             // Find matching credential by format and VCT
             val matchedCredential = credentialList.find { cred ->
                 cred.credentialFormat == dcqlFormat &&

@@ -11,6 +11,7 @@ import dev.kmandalas.wallet.dto.QtspCredentialsListResponse
 import dev.kmandalas.wallet.dto.QtspInfoResponse
 import dev.kmandalas.wallet.dto.QtspSignHashRequest
 import dev.kmandalas.wallet.dto.QtspSignHashResponse
+import dev.kmandalas.wallet.security.WalletKeyManager
 import com.nimbusds.jose.crypto.impl.ECDSA
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -29,13 +30,24 @@ import java.util.Base64
  * All endpoints are under /csc/v2/ on the configured QTSP URL.
  * Authentication uses a static API key in the Authorization header.
  */
-class QtspService(private val client: HttpClient) {
+class QtspService(
+    private val client: HttpClient,
+    private val walletKeyManager: WalletKeyManager
+) {
 
     companion object {
         private const val TAG = "QtspService"
     }
 
     private val baseUrl: String get() = "${AppConfig.QTSP_URL}/csc/v2"
+
+    /**
+     * Wallet key thumbprint (RFC 7638 SHA-256) used as per-device userID in CSC API.
+     */
+    private fun getDeviceUserId(): String {
+        val walletKey = walletKeyManager.getWalletKey()
+        return walletKey.computeThumbprint().toString()
+    }
 
     /**
      * GET /csc/v2/info — QTSP server info.
@@ -53,11 +65,12 @@ class QtspService(private val client: HttpClient) {
      * POST /csc/v2/credentials/list — list available credential IDs.
      */
     suspend fun listCredentials(): List<String> {
-        Log.d(TAG, "📋 Listing QTSP credentials")
+        val userId = getDeviceUserId()
+        Log.d(TAG, "📋 Listing QTSP credentials for device user: ${userId.take(12)}...")
         val response: QtspCredentialsListResponse = client.post("$baseUrl/credentials/list") {
             header("Authorization", "Bearer ${AppConfig.QTSP_API_KEY}")
             contentType(ContentType.Application.Json)
-            setBody(QtspCredentialsListRequest())
+            setBody(QtspCredentialsListRequest(userId = userId))
         }.body()
         Log.d(TAG, "📋 QTSP credentials: ${response.credentialIds}")
         return response.credentialIds
